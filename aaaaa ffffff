@@ -42,29 +42,37 @@ local function DescendantOfIgnore(obj)
     return false
 end
 
--- Remove visual objects (optimized with pcall)
+-- Remove visual objects (optimized with pcall, silently ignore errors)
 local function RemoveVisualObjects()
     pcall(function()
         local count = 0
         for _, obj in pairs(Workspace:GetDescendants()) do
             if not DescendantOfIgnore(obj) then
-                -- Skip BULLET_RAYS and gun effects to avoid warnings
-                if obj.Parent then
-                    local parentName = obj.Parent.Name
-                    if parentName == "BULLET_RAYS" or parentName == "MoneyDrop" or obj.Name:find("Gun") or obj.Name:find("Beam") or obj.Name:find("Muzzle") then
-                        continue
+                -- Skip ALL descendants of BULLET_RAYS and MoneyDrop to avoid warnings
+                local parent = obj.Parent
+                while parent do
+                    if parent.Name == "BULLET_RAYS" or parent.Name == "MoneyDrop" then
+                        goto continue
                     end
+                    parent = parent.Parent
                 end
                 
                 for _, class in ipairs(visualClasses) do
                     if obj:IsA(class) then
-                        pcall(function() obj:Destroy() end)
+                        -- Silently destroy without printing warnings
+                        pcall(function() 
+                            if obj and obj.Parent then
+                                obj:Destroy() 
+                            end
+                        end)
                         count = count + 1
                         if count % 50 == 0 then
                             task.wait() -- Yield occasionally to prevent lag spikes
                         end
                     end
                 end
+                
+                ::continue::
             end
         end
         
@@ -72,14 +80,22 @@ local function RemoveVisualObjects()
             for _, child in pairs(Workspace.Terrain:GetChildren()) do
                 for _, class in ipairs(visualClasses) do
                     if child:IsA(class) then
-                        pcall(function() child:Destroy() end)
+                        pcall(function() 
+                            if child and child.Parent then
+                                child:Destroy() 
+                            end
+                        end)
                     end
                 end
             end
         end
         
         for _, obj in pairs(Lighting:GetChildren()) do
-            pcall(function() obj:Destroy() end)
+            pcall(function() 
+                if obj and obj.Parent then
+                    obj:Destroy() 
+                end
+            end)
         end
     end)
 end
