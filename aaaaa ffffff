@@ -592,10 +592,7 @@ local function collectMoney(moneyPart)
     end
 end
 
--- FIXED: Proper hook management to prevent memory leaks
-local currentMouseHook = nil
-
--- FIXED: Rob target with proper connection cleanup
+-- FIXED: Rob target with proper connection cleanup and safe hook
 local function robTarget(targetModel, openPart)
     local char = Player.Character
     if not char or not char.Parent then return end
@@ -622,17 +619,18 @@ local function robTarget(targetModel, openPart)
         task.wait(0.6)
     end
     
-    -- FIXED: Restore old hook before creating new one
-    local oldHook = currentMouseHook
-    currentMouseHook = hookmetamethod(game, "__index", function(t, k)
-        if t:IsA("Mouse") and (k == "Hit" or k == "Target") then
-            if k == "Hit" then
-                return CFrame.new(aimPosition)
-            elseif k == "Target" then
-                return targetHead
+    -- FIXED: Simpler hook that doesn't cause recursion
+    local oldNamecall
+    oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+        local method = getnamecallmethod()
+        if method == "FireServer" and self.Name == "MainEvent" then
+            local args = {...}
+            if args[1] == "UpdateMousePos" or args[1] == "UpdateMousePosI" or args[1] == "MousePos" then
+                args[2] = aimPosition
+                return oldNamecall(self, unpack(args))
             end
         end
-        return oldHook and oldHook(t, k) or t[k]
+        return oldNamecall(self, ...)
     end)
     
     local shootStart = tick()
@@ -651,22 +649,24 @@ local function robTarget(targetModel, openPart)
                 return
             end
             
-            if UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter then
-                hrp.CFrame = CFrame.lookAt(hrp.Position, aimPosition)
-            end
-            
-            local equipped = char:FindFirstChildOfClass("Tool")
-            if equipped and string.lower(equipped.Name):find("aug") then
-                equipped:Activate()
-                task.wait(0.05)
-                equipped:Activate()
-            else
-                tool = getAUGTool()
-                if tool then
-                    hum:EquipTool(tool)
-                    task.wait(0.4)
+            pcall(function()
+                if UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter then
+                    hrp.CFrame = CFrame.lookAt(hrp.Position, aimPosition)
                 end
-            end
+                
+                local equipped = char:FindFirstChildOfClass("Tool")
+                if equipped and string.lower(equipped.Name):find("aug") then
+                    equipped:Activate()
+                    task.wait(0.05)
+                    equipped:Activate()
+                else
+                    tool = getAUGTool()
+                    if tool then
+                        hum:EquipTool(tool)
+                        task.wait(0.4)
+                    end
+                end
+            end)
         end)
         
         while targetModel.Humanoid.Health > 0 and (tick() - shootStart) < getgenv().MaxAttackTime and connectionActive do
@@ -682,9 +682,8 @@ local function robTarget(targetModel, openPart)
     end
     
     -- FIXED: Restore hook properly
-    if currentMouseHook then
-        hookmetamethod(game, "__index", oldHook or function(t, k) return t[k] end)
-        currentMouseHook = oldHook
+    if oldNamecall then
+        hookmetamethod(game, "__namecall", oldNamecall)
     end
     
     randomDelay(getgenv().SpawnWait, getgenv().SpawnWait + 0.3)
