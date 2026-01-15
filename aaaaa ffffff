@@ -49,13 +49,16 @@ local function RemoveVisualObjects()
         for _, obj in pairs(Workspace:GetDescendants()) do
             if not DescendantOfIgnore(obj) then
                 -- Skip BULLET_RAYS and gun effects to avoid warnings
-                if obj.Parent and obj.Parent.Name == "BULLET_RAYS" then
-                    continue
+                if obj.Parent then
+                    local parentName = obj.Parent.Name
+                    if parentName == "BULLET_RAYS" or parentName == "MoneyDrop" or obj.Name:find("Gun") or obj.Name:find("Beam") or obj.Name:find("Muzzle") then
+                        continue
+                    end
                 end
                 
                 for _, class in ipairs(visualClasses) do
                     if obj:IsA(class) then
-                        obj:Destroy()
+                        pcall(function() obj:Destroy() end)
                         count = count + 1
                         if count % 50 == 0 then
                             task.wait() -- Yield occasionally to prevent lag spikes
@@ -69,14 +72,14 @@ local function RemoveVisualObjects()
             for _, child in pairs(Workspace.Terrain:GetChildren()) do
                 for _, class in ipairs(visualClasses) do
                     if child:IsA(class) then
-                        child:Destroy()
+                        pcall(function() child:Destroy() end)
                     end
                 end
             end
         end
         
         for _, obj in pairs(Lighting:GetChildren()) do
-            obj:Destroy()
+            pcall(function() obj:Destroy() end)
         end
     end)
 end
@@ -746,7 +749,18 @@ end)
 local function sendWebhook()
     if not getgenv().AutofarmSettings.Webhook.Webhook or getgenv().AutofarmSettings.Webhook.Webhook == "" then 
         warn("[Prime DHC Auto Farm] No webhook URL configured")
-        return 
+        return false
+    end
+    
+    -- Safety check: ensure all data is available
+    if not Player or not Player.DataFolder or not Player.DataFolder:FindFirstChild("Currency") then
+        warn("[Prime DHC Auto Farm] Player data not ready for webhook")
+        return false
+    end
+    
+    if not startCash or not startTime then
+        warn("[Prime DHC Auto Farm] Start values not initialized")
+        return false
     end
     
     local success, err = pcall(function()
@@ -815,7 +829,7 @@ local function sendWebhook()
         
         local jsonData = HttpService:JSONEncode(data)
         
-        -- Try using request function (works better in some executors)
+        -- Use request function (Seliware supports this)
         local req = http_request or request or syn.request or fluxus.request
         if req then
             local response = req({
@@ -826,7 +840,8 @@ local function sendWebhook()
                 },
                 Body = jsonData
             })
-            print("[Prime DHC Auto Farm] Webhook sent via request function - Status:", response.StatusCode)
+            print("[Prime DHC Auto Farm] Webhook sent via request - Status:", response.StatusCode or "Unknown")
+            return true
         else
             -- Fallback to HttpService
             local response = HttpService:PostAsync(
@@ -836,13 +851,13 @@ local function sendWebhook()
                 false
             )
             print("[Prime DHC Auto Farm] Webhook sent via HttpService")
+            return true
         end
-        
-        return true
     end)
     
     if not success then
-        warn("[Prime DHC Auto Farm] Webhook error:", err)
+        warn("[Prime DHC Auto Farm] Webhook error:", tostring(err))
+        return false
     end
     
     return success
