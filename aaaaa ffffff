@@ -1,0 +1,694 @@
+if not getgenv().Data or not getgenv().Data .authenticated then
+    game:GetService("Players").LocalPlayer:Kick("Run the loader first")
+    return
+end
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local VirtualUser = game:GetService("VirtualUser")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = workspace
+local CoreGui = game:GetService("CoreGui")
+local HttpService = game:GetService("HttpService")
+local TeleportService = game:GetService("TeleportService")
+local TweenService = game:GetService("TweenService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Player = Players.LocalPlayer
+local fpsVar = 60
+RunService.Heartbeat:Connect(function(dt)
+    fpsVar = math.floor(1 / dt)
+end)
+setfpscap(getgenv().AutofarmSettings.Main.Fps)
+local Lighting = game:GetService("Lighting")
+local MaterialService = game:GetService("MaterialService")
+local visualClasses = {
+    "Decal", "Texture", "ParticleEmitter", "Smoke", "Fire", "Sparkles", "Trail", "Beam",
+    "PostEffect", "Sky", "Atmosphere", "SunRaysEffect", "Light", "ColorCorrectionEffect"
+}
+local function DescendantOfIgnore(obj)
+    local ignoreInstances = {Workspace:FindFirstChild("Map"), Workspace:FindFirstChild("CurrentMap")}
+    for _, ignore in pairs(ignoreInstances) do
+        if ignore and obj:IsDescendantOf(ignore) then
+            return true
+        end
+    end
+    return false
+end
+local function RemoveVisualObjects()
+    local count = 0
+    for _, obj in pairs(Workspace:GetDescendants()) do
+        if not DescendantOfIgnore(obj) then
+            for _, class in ipairs(visualClasses) do
+                if obj:IsA(class) then
+                    obj:Destroy()
+                    count = count + 1
+                end
+            end
+        end
+    end
+    if Workspace.Terrain then
+        for _, child in pairs(Workspace.Terrain:GetChildren()) do
+            for _, class in ipairs(visualClasses) do
+                if child:IsA(class) then
+                    child:Destroy()
+                    count = count + 1
+                end
+            end
+        end
+    end
+    for _, obj in pairs(Lighting:GetChildren()) do
+        obj:Destroy()
+        count = count + 1
+    end
+end
+local function DisableShadows()
+    for _, obj in pairs(Workspace:GetDescendants()) do
+        if obj:IsA("BasePart") and not DescendantOfIgnore(obj) then
+            obj.CastShadow = false
+        end
+    end
+end
+local function PotatofyParts()
+    local partCount = 0
+    for _, obj in pairs(Workspace:GetDescendants()) do
+        if not DescendantOfIgnore(obj) then
+            if obj:IsA("MeshPart") or obj:IsA("Part") then
+                obj.Material = Enum.Material.Plastic
+                obj.Reflectance = 0
+                obj.Color = Color3.new(0.5, 0.5, 0.5)
+                if obj:IsA("MeshPart") then
+                    obj.TextureID = ""
+                    obj.MeshId = ""
+                    obj.RenderFidelity = Enum.RenderFidelity.Automatic
+                end
+                partCount = partCount + 1
+            elseif obj:IsA("SpecialMesh") or obj:IsA("BlockMesh") or obj:IsA("FileMesh") then
+                obj:Destroy()
+            end
+        end
+    end
+    for _, v in pairs(MaterialService:GetChildren()) do
+        v:Destroy()
+    end
+    MaterialService.Use2022Materials = false
+end
+local function OptimizeRendering()
+    Lighting.GlobalShadows = false
+    Lighting.FogEnd = 100000
+    Lighting.FogStart = 0
+    Lighting.Brightness = 0.5
+    Lighting.Ambient = Color3.new(0.5, 0.5, 0.5)
+    Lighting.OutdoorAmbient = Color3.new(0.5, 0.5, 0.5)
+    Lighting.ShadowSoftness = 0
+    Lighting.ClockTime = 12
+    pcall(function()
+        sethiddenproperty(Lighting, "Technology", Enum.Technology.Compatibility)
+    end)
+    if settings().Rendering then
+        settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
+        settings().Rendering.EnableParticles = false
+    end
+    if Workspace.Terrain then
+        Workspace.Terrain.WaterWaveSize = 0
+        Workspace.Terrain.WaterWaveSpeed = 0
+        Workspace.Terrain.WaterReflectance = 0
+        Workspace.Terrain.WaterTransparency = 0
+        pcall(function()
+            sethiddenproperty(Workspace.Terrain, "Decoration", false)
+        end)
+    end
+    pcall(function()
+        Workspace.StreamingMinRadius = 64
+        Workspace.StreamingTargetRadius = 128
+    end)
+    pcall(function()
+        Workspace.CurrentCamera.FieldOfView = 120
+    end)
+    pcall(function()
+        if setfpscap then
+            setfpscap(1e6)
+        end
+    end)
+    pcall(function()
+        if getnilinstances then
+            for _, v in pairs(getnilinstances()) do
+                v:Destroy()
+            end
+        end
+    end)
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= Players.LocalPlayer then
+            local character = player.Character
+            if character then
+                for _, anim in pairs(character:GetDescendants()) do
+                    if anim:IsA("Animation") or anim:IsA("AnimationTrack") then
+                        anim:Destroy()
+                    end
+                end
+            end
+        end
+    end
+end
+local function MonitorNewObjects()
+    Workspace.DescendantAdded:Connect(function(obj)
+        if not DescendantOfIgnore(obj) then
+            for _, class in ipairs(visualClasses) do
+                if obj:IsA(class) then
+                    obj:Destroy()
+                end
+            end
+            if obj:IsA("BasePart") then
+                obj.CastShadow = false
+                obj.Material = Enum.Material.Plastic
+                obj.Reflectance = 0
+                obj.Color = Color3.new(0.5, 0.5, 0.5)
+            elseif obj:IsA("SpecialMesh") or obj:IsA("BlockMesh") or obj:IsA("FileMesh") then
+                obj:Destroy()
+            end
+        end
+    end)
+    Lighting.ChildAdded:Connect(function(obj)
+        obj:Destroy()
+    end)
+end
+local function InitAntiLag()
+    RemoveVisualObjects()
+    DisableShadows()
+    PotatofyParts()
+    OptimizeRendering()
+    MonitorNewObjects()
+    RunService.Heartbeat:Connect(function()
+        if tick() % 30 < 0.1 then
+            RemoveVisualObjects()
+            DisableShadows()
+            PotatofyParts()
+        end
+        pcall(function()
+            sethiddenproperty(Lighting, "Technology", Enum.Technology.Compatibility)
+            if settings().Rendering then
+                settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
+            end
+            Lighting.GlobalShadows = false
+            Lighting.FogEnd = 100000
+        end)
+    end)
+end
+local success, err = pcall(InitAntiLag)
+if not success then
+end
+local startTime
+local startCash
+local function formatMoney(amount)
+    local formatted = tostring(math.floor(amount)):reverse():gsub("(%d%d%d)", "%1,")
+    formatted = formatted:reverse():gsub("^,", ""):gsub(",$", "")
+    return "$" .. formatted
+end
+local function setupGUI()
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "PrimeFarm"
+    screenGui.ResetOnSpawn = false
+    screenGui.IgnoreGuiInset = true
+    screenGui.Parent = Player:WaitForChild("PlayerGui")
+    _G.farmGui = screenGui
+    local blackScreen = Instance.new("Frame")
+    blackScreen.Name = "BlackScreen"
+    blackScreen.Size = UDim2.new(1, 0, 1, 0)
+    blackScreen.BackgroundColor3 = Color3.new(0, 0, 0)
+    blackScreen.BorderSizePixel = 0
+    blackScreen.ZIndex = 0
+    blackScreen.Parent = screenGui
+    local frame = Instance.new("Frame")
+    frame.Name = "MainFrame"
+    frame.Size = UDim2.new(0, 320, 0, 280)
+    frame.Position = UDim2.new(0.5, -160, 0.5, -140)
+    frame.BackgroundColor3 = Color3.fromRGB(15, 23, 42)
+    frame.BorderSizePixel = 0
+    frame.ZIndex = 10
+    frame.Parent = screenGui
+    local gradient = Instance.new("UIGradient")
+    gradient.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(20, 30, 50)),
+        ColorSequenceKeypoint.new(0.5, Color3.fromRGB(30, 40, 60)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(20, 30, 50))
+    })
+    gradient.Rotation = 45
+    gradient.Parent = frame
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Color3.fromRGB(0, 255, 255)
+    stroke.Thickness = 2
+    stroke.Parent = frame
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 12)
+    corner.Parent = frame
+    local header = Instance.new("Frame")
+    header.Name = "Header"
+    header.Size = UDim2.new(1, 0, 0, 60)
+    header.Position = UDim2.new(0, 0, 0, 0)
+    header.BackgroundColor3 = Color3.fromRGB(0, 255, 255)
+    header.BackgroundTransparency = 0.9
+    header.ZIndex = 11
+    header.Parent = frame
+    local headerCorner = Instance.new("UICorner")
+    headerCorner.CornerRadius = UDim.new(0, 12)
+    headerCorner.Parent = header
+    local headerPadding = Instance.new("UIPadding")
+    headerPadding.PaddingTop = UDim.new(0, 12)
+    headerPadding.Parent = header
+    local title = Instance.new("TextLabel")
+    title.Name = "Title"
+    title.Size = UDim2.new(1, 0, 0, 22)
+    title.Position = UDim2.new(0, 0, 0, 0)
+    title.BackgroundTransparency = 1
+    title.Text = "PRIMES DA HOOD AUTO FARM"
+    title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    title.Font = Enum.Font.GothamBold
+    title.TextSize = 18
+    title.TextXAlignment = Enum.TextXAlignment.Center
+    title.ZIndex = 12
+    title.Parent = header
+    local subtitle = Instance.new("TextLabel")
+    subtitle.Name = "Subtitle"
+    subtitle.Size = UDim2.new(1, 0, 0, 15)
+    subtitle.Position = UDim2.new(0, 0, 0, 25)
+    subtitle.BackgroundTransparency = 1
+    subtitle.Text = "discord.gg/primedhc"
+    subtitle.TextColor3 = Color3.fromRGB(200, 255, 255)
+    subtitle.Font = Enum.Font.Gotham
+    subtitle.TextSize = 12
+    subtitle.TextXAlignment = Enum.TextXAlignment.Center
+    subtitle.ZIndex = 12
+    subtitle.Parent = header
+    local statsContainer = Instance.new("Frame")
+    statsContainer.Name = "StatsContainer"
+    statsContainer.Size = UDim2.new(1, -20, 1, -70)
+    statsContainer.Position = UDim2.new(0, 10, 0, 65)
+    statsContainer.BackgroundTransparency = 1
+    statsContainer.ZIndex = 11
+    statsContainer.Parent = frame
+    local function createStatLabel(yPos, name, initialText)
+        local label = Instance.new("TextLabel")
+        label.Name = name
+        label.Size = UDim2.new(1, 0, 0, 30)
+        label.Position = UDim2.new(0, 0, 0, yPos)
+        label.BackgroundTransparency = 1
+        label.Text = initialText or ""
+        label.TextColor3 = Color3.fromRGB(220, 220, 220)
+        label.Font = Enum.Font.Gotham
+        label.TextSize = 15
+        label.TextXAlignment = Enum.TextXAlignment.Center
+        label.ZIndex = 11
+        label.Parent = statsContainer
+        return label
+    end
+    createStatLabel(0, "UserLabel", "User: Loading...")
+    createStatLabel(35, "FPSLabel", "FPS: Loading...")
+    createStatLabel(70, "TimeLabel", "Time Running: Loading...")
+    createStatLabel(105, "StartCashLabel", "Start Cash: Loading...")
+    createStatLabel(140, "CurrentCashLabel", "Current Cash: Loading...")
+    createStatLabel(175, "ProfitLabel", "Total Profit: Loading...")
+    return screenGui, blackScreen
+end
+local gui, blackScreen = setupGUI()
+local isBlackScreenEnabled = true
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.Comma then
+        isBlackScreenEnabled = not isBlackScreenEnabled
+        blackScreen.Visible = isBlackScreenEnabled
+    end
+end)
+local function updateGUI()
+    if not gui or not gui:FindFirstChild("MainFrame") or not gui.MainFrame:FindFirstChild("StatsContainer") then return end
+    local elapsed = tick() - startTime
+    local hours = math.floor(elapsed / 3600)
+    local minutes = math.floor((elapsed % 3600) / 60)
+    local seconds = math.floor(elapsed % 60)
+    local timeString = string.format("%02d:%02d:%02d", hours, minutes, seconds)
+    local currentCash = Player.DataFolder.Currency.Value
+    local profit = currentCash - startCash
+    gui.MainFrame.StatsContainer.FPSLabel.Text = "FPS: " .. tostring(fpsVar)
+    gui.MainFrame.StatsContainer.FPSLabel.TextColor3 = Color3.fromRGB(0, 255, 255)
+    gui.MainFrame.StatsContainer.UserLabel.Text = "User: " .. Player.Name
+    gui.MainFrame.StatsContainer.UserLabel.TextColor3 = Color3.fromRGB(0, 255, 255)
+    gui.MainFrame.StatsContainer.TimeLabel.Text = "Time Running: " .. timeString
+    gui.MainFrame.StatsContainer.StartCashLabel.Text = "Start Cash: " .. formatMoney(startCash)
+    gui.MainFrame.StatsContainer.CurrentCashLabel.Text = "Current Cash: " .. formatMoney(currentCash)
+    local profitLabel = gui.MainFrame.StatsContainer.ProfitLabel
+    profitLabel.Text = "Total Profit: " .. formatMoney(profit)
+    profitLabel.TextColor3 = (profit >= 0) and Color3.fromRGB(0, 255, 255) or Color3.fromRGB(255, 80, 80)
+end
+if not Player.Character then
+    Player.CharacterAdded:Wait()
+end
+repeat task.wait() until game:IsLoaded()
+repeat task.wait() until Player.Character
+repeat task.wait() until Player.Character:FindFirstChild("HumanoidRootPart")
+repeat task.wait() until Player:FindFirstChild("DataFolder")
+repeat task.wait() until Player.DataFolder:FindFirstChild("Currency")
+getgenv().MaxAttackTime = 10
+getgenv().CollectRange = 50
+getgenv().CollectTime = 5
+getgenv().SpawnWait = 1.5
+getgenv().ReloadThreshold = 3
+startTime = tick()
+startCash = Player.DataFolder.Currency.Value
+local ok, err = pcall(updateGUI)
+if not ok then
+end
+task.spawn(function()
+    while true do
+        local ok, err = pcall(updateGUI)
+        if not ok then
+        end
+        task.wait(1)
+    end
+end)
+local function randomDelay(min, max)
+    min = min or getgenv().AutofarmSettings.Main.Delay
+    max = max or min + 0.2
+    task.wait(math.random(min * 100, max * 100) / 100)
+end
+local function hasAUG()
+    local containers = {Player.Backpack}
+    local char = Player.Character
+    if char then
+        table.insert(containers, char)
+    end
+    for _, container in pairs(containers) do
+        for _, tool in pairs(container:GetChildren()) do
+            if tool:IsA("Tool") and string.lower(tool.Name):find("aug") then
+                return true
+            end
+        end
+    end
+    return false
+end
+local function getAUGTool()
+    local char = Player.Character
+    if not char then return nil end
+    for _, tool in pairs(char:GetChildren()) do
+        if tool:IsA("Tool") and string.lower(tool.Name):find("aug") then
+            return tool
+        end
+    end
+    for _, tool in pairs(Player.Backpack:GetChildren()) do
+        if tool:IsA("Tool") and string.lower(tool.Name):find("aug") then
+            return tool
+        end
+    end
+    return nil
+end
+local augBuyPos = Vector3.new(-273.0153041799, 52.2666088321, -216.104867764)
+local ammoBuyPos = Vector3.new(-277.8882854219, 52.3626088321, -217.0169677738)
+local function findShopItem(pos, isAmmo)
+    local shop = workspace:WaitForChild("Ignored"):WaitForChild("Shop")
+    local minDist = math.huge
+    local bestCD, bestHead, bestName = nil, nil, ""
+    for _, item in pairs(shop:GetChildren()) do
+        local nameLower = string.lower(item.Name)
+        if nameLower:find("aug") and (isAmmo == (nameLower:find("ammo") ~= nil)) then
+            local head = item:FindFirstChild("Head")
+            local cd = item:FindFirstChild("ClickDetector") or (head and head:FindFirstChild("ClickDetector"))
+            if cd and head then
+                local dist = (head.Position - pos).Magnitude
+                if dist < minDist then
+                    minDist = dist
+                    bestCD = cd
+                    bestHead = head
+                    bestName = item.Name
+                end
+            end
+        end
+    end
+    return bestCD, bestHead, minDist, bestName
+end
+local function buyItem(pos, isAmmo)
+    local char = Player.Character
+    if not char then return false end
+    local hrp = char:WaitForChild("HumanoidRootPart")
+    hrp.CFrame = CFrame.new(pos)
+    hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+    hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+    task.wait(0.5)
+    local cd, head, dist, name = findShopItem(pos, isAmmo)
+    if cd and head then
+        if isAmmo then
+            for i = 1, 100 do
+                fireclickdetector(cd)
+                task.wait(0.035)
+            end
+        else
+            fireclickdetector(cd)
+        end
+        return true
+    else
+        return false
+    end
+end
+local function autoBuy()
+    if not hasAUG() then
+        buyItem(augBuyPos, false)
+        task.wait(3)
+    end
+    buyItem(ammoBuyPos, true)
+end
+autoBuy()
+local function collectMoney(moneyPart)
+    if moneyPart and moneyPart.Parent then
+        local cd = moneyPart:FindFirstChild("ClickDetector")
+        if cd then
+            pcall(fireclickdetector, cd)
+        end
+    end
+end
+local function robTarget(targetModel, openPart)
+    local char = Player.Character
+    if not char or not char.Parent then return end
+    local hrp = char.HumanoidRootPart
+    local hum = char.Humanoid
+    local targetHead = targetModel:FindFirstChild("Head")
+    if not targetHead then return end
+    local aimPosition = targetHead.Position - Vector3.new(0, 3, 0)
+    local tpPos = openPart.Position - openPart.CFrame.LookVector * 4
+    hrp.CFrame = CFrame.lookAt(tpPos, aimPosition)
+    hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+    randomDelay(0.3, 0.5)
+    local tool = getAUGTool()
+    if not tool then
+        return
+    end
+    if tool.Parent ~= char then
+        hum:EquipTool(tool)
+        task.wait(0.6)
+    end
+    local __index
+    __index = hookmetamethod(game, "__index", function(t, k)
+        if t:IsA("Mouse") and (k == "Hit" or k == "Target") then
+            if k == "Hit" then
+                return CFrame.new(aimPosition)
+            elseif k == "Target" then
+                return targetHead
+            end
+        end
+        return __index(t, k)
+    end)
+    local shootStart = tick()
+    local shootConn
+    shootConn = RunService.RenderStepped:Connect(function()
+        if (tick() - shootStart) > getgenv().MaxAttackTime or targetModel.Humanoid.Health <= 0 then
+            shootConn:Disconnect()
+            return
+        end
+        if UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter then
+            hrp.CFrame = CFrame.lookAt(hrp.Position, aimPosition)
+        end
+        local equipped = char:FindFirstChildOfClass("Tool")
+        if equipped and string.lower(equipped.Name):find("aug") then
+            equipped:Activate()
+            task.wait(0.05)
+            equipped:Activate()
+        else
+            tool = getAUGTool()
+            if tool then
+                hum:EquipTool(tool)
+                task.wait(0.4)
+            end
+        end
+    end)
+    while targetModel.Humanoid.Health > 0 and (tick() - shootStart) < getgenv().MaxAttackTime do
+        task.wait(0.1)
+    end
+    shootConn:Disconnect()
+    hookmetamethod(game, "__index", __index)
+    randomDelay(getgenv().SpawnWait, getgenv().SpawnWait + 0.3)
+    local vacuumStart = tick()
+    local targetPos = targetModel.PrimaryPart and targetModel.PrimaryPart.Position or (targetModel:FindFirstChild("HumanoidRootPart") and targetModel.HumanoidRootPart.Position) or openPart.Position
+    hrp.CFrame = CFrame.new(targetPos + Vector3.new(0, 3, 0))
+    hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+    while (tick() - vacuumStart) < getgenv().CollectTime do
+        local dropsFolder = Workspace:FindFirstChild("Ignored")
+        local foundCash = false
+        if dropsFolder then
+            local dropFolder = dropsFolder:FindFirstChild("Drop")
+            if dropFolder then
+                for _, cashPart in pairs(dropFolder:GetChildren()) do
+                    if cashPart:IsA("Part") and cashPart.Name == "MoneyDrop" then
+                        local dist = (cashPart.Position - targetPos).Magnitude
+                        if dist <= getgenv().CollectRange then
+                            foundCash = true
+                            collectMoney(cashPart)
+                            randomDelay(0.1, 0.2)
+                        end
+                    end
+                end
+            end
+        end
+        if not foundCash then
+            randomDelay(0.2, 0.4)
+        end
+    end
+    hrp.CFrame = CFrame.new(9999, 50, 9999)
+end
+local function performHop()
+    if _G.farmGui then _G.farmGui:Destroy() end
+    local placeId = game.PlaceId
+    local jobId = game.JobId
+    local url = "https://games.roblox.com/v1/games/" .. placeId .. "/servers/Public?sortOrder=Asc&sortBy=Active&limit=100"
+    local success, result = pcall(HttpService.RequestAsync, HttpService, {Url = url, Method = "GET"})
+    if success and result.Body then
+        local data = HttpService:JSONDecode(result.Body)
+        if data and data.data and #data.data > 0 then
+            for _, server in pairs(data.data) do
+                if server.id ~= jobId and server.playing < server.maxPlayers - 1 then
+                    TeleportService:TeleportToPlaceInstance(placeId, server.id)
+                    return
+                end
+            end
+            TeleportService:Teleport(placeId)
+        end
+    else
+        TeleportService:Teleport(placeId)
+    end
+end
+task.spawn(function()
+    while true do
+        if getgenv().AutofarmSettings.ServerHop.Enabled then
+            task.wait(getgenv().AutofarmSettings.ServerHop.Interval * 60)
+            pcall(performHop)
+        else
+            task.wait(10)
+        end
+    end
+end)
+local function sendWebhook()
+    if getgenv().AutofarmSettings.Webhook.Webhook == "" then return end
+    local currentCash = Player.DataFolder.Currency.Value
+    local profit = currentCash - startCash
+    local elapsed = tick() - startTime
+    local hours = math.floor(elapsed / 3600)
+    local minutes = math.floor((elapsed % 3600) / 60)
+    local data = {
+        ["username"] = "Prime Farm Logger",
+        ["embeds"] = {{
+            ["title"] = "Farm Update: " .. Player.Name,
+            ["description"] = "Running for " .. hours .. "h " .. minutes .. "m",
+            ["color"] = 1752220,
+            ["fields"] = {
+                {name = "Current Cash", value = formatMoney(currentCash), inline = true},
+                {name = "Total Profit", value = formatMoney(profit), inline = true},
+                {name = "FPS", value = tostring(fpsVar), inline = true}
+            }
+        }}
+    }
+    pcall(function()
+        HttpService:PostAsync(getgenv().AutofarmSettings.Webhook.Webhook, HttpService:JSONEncode(data), Enum.HttpContentType.ApplicationJson)
+    end)
+end
+task.spawn(function()
+    while true do
+        if getgenv().AutofarmSettings.Webhook.Webhook ~= "" then
+            pcall(sendWebhook)
+        end
+        task.wait(getgenv().AutofarmSettings.Webhook.Interval)
+    end
+end)
+local MainEvent = ReplicatedStorage:WaitForChild("MainEvent")
+local function getEquippedTool()
+    local char = Player.Character
+    return char and char:FindFirstChildOfClass("Tool")
+end
+local function needsReload(tool)
+    if not tool then return false end
+    local ammo = tool:FindFirstChild("Ammo")
+    if ammo and ammo:IsA("IntValue") then
+        return ammo.Value <= getgenv().ReloadThreshold
+    end
+    return true
+end
+local function doReload()
+    local tool = getEquippedTool()
+    if tool and needsReload(tool) and MainEvent.Parent then
+        MainEvent:FireServer("Reload", tool)
+        return true
+    end
+    return false
+end
+task.spawn(function()
+    while true do
+        doReload()
+        task.wait(0.12 + math.random(0, 8)/100)
+    end
+end)
+Player.Idled:Connect(function()
+    VirtualUser:CaptureController()
+    VirtualUser:ClickButton2(Vector2.new())
+end)
+Player.CharacterAdded:Connect(function(newChar)
+    local hrp = newChar:WaitForChild("HumanoidRootPart")
+    autoBuy()
+    startTime = tick()
+    startCash = Player.DataFolder.Currency.Value
+    local ok, err = pcall(updateGUI)
+    if not ok then
+    end
+end)
+task.spawn(function()
+    while true do
+        pcall(function()
+            local foundTarget = false
+            local cashiersFolder = Workspace:FindFirstChild("Cashiers")
+            if cashiersFolder then
+                for _, cashierModel in pairs(cashiersFolder:GetChildren()) do
+                    local humanoid = cashierModel:FindFirstChild("Humanoid")
+                    if humanoid and humanoid.Health > 0 then
+                        local openPart = cashierModel:FindFirstChild("Open")
+                        if openPart then
+                            foundTarget = true
+                            robTarget(cashierModel, openPart)
+                            local speed = getgenv().AutofarmSettings.Main.Speed
+                            local minDelay = 0.5 / speed
+                            local maxDelay = minDelay + 0.2
+                            randomDelay(minDelay, maxDelay)
+                        end
+                    end
+                end
+            end
+            if not foundTarget then
+                randomDelay(5, 7)
+            end
+        end)
+        task.wait(1)
+    end
+end)
+
+while wait() do
+    pcall(function()
+        if game:GetService("Players").LocalPlayer.Character:FindFirstChild("BodyEffects"):FindFirstChild("K.O").Value == true then
+            for i, v in pairs(game:GetService("Players").LocalPlayer.Character:GetChildren()) do
+                if v:IsA("BasePart") then
+                    v:Destroy()
+                end
+            end
+        end
+    end)
+end
