@@ -768,7 +768,7 @@ local function sendWebhook()
             ["embeds"] = {{
                 ["title"] = "Farm Status Report",
                 ["description"] = "**User:** " .. Player.Name .. "\n**Display Name:** " .. Player.DisplayName,
-                ["color"] = 65535, -- Brightest cyan (00FFFF in hex)
+                ["color"] = 65535,
                 ["fields"] = {
                     {
                         ["name"] = "Runtime",
@@ -814,11 +814,29 @@ local function sendWebhook()
         }
         
         local jsonData = HttpService:JSONEncode(data)
-        local response = HttpService:PostAsync(
-            getgenv().AutofarmSettings.Webhook.Webhook,
-            jsonData,
-            Enum.HttpContentType.ApplicationJson
-        )
+        
+        -- Try using request function (works better in some executors)
+        local req = http_request or request or syn.request or fluxus.request
+        if req then
+            local response = req({
+                Url = getgenv().AutofarmSettings.Webhook.Webhook,
+                Method = "POST",
+                Headers = {
+                    ["Content-Type"] = "application/json"
+                },
+                Body = jsonData
+            })
+            print("[Prime DHC Auto Farm] Webhook sent via request function - Status:", response.StatusCode)
+        else
+            -- Fallback to HttpService
+            local response = HttpService:PostAsync(
+                getgenv().AutofarmSettings.Webhook.Webhook,
+                jsonData,
+                Enum.HttpContentType.ApplicationJson,
+                false
+            )
+            print("[Prime DHC Auto Farm] Webhook sent via HttpService")
+        end
         
         return true
     end)
