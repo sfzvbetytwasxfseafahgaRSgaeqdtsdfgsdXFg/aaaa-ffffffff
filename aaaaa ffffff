@@ -217,6 +217,15 @@ local function MonitorNewObjects()
     Workspace.DescendantAdded:Connect(function(obj)
         pcall(function()
             if not DescendantOfIgnore(obj) then
+                -- Skip ALL descendants of BULLET_RAYS and MoneyDrop
+                local parent = obj.Parent
+                while parent do
+                    if parent.Name == "BULLET_RAYS" or parent.Name == "MoneyDrop" then
+                        return
+                    end
+                    parent = parent.Parent
+                end
+                
                 for _, class in ipairs(visualClasses) do
                     if obj:IsA(class) then
                         obj:Destroy()
