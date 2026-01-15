@@ -23,7 +23,11 @@ local fpsVar = 60
 RunService.Heartbeat:Connect(function(dt)
     fpsVar = math.floor(1 / dt)
 end)
-setfpscap(getgenv().AutofarmSettings.Main.Fps)
+
+-- Set FPS cap if available
+if setfpscap then
+    setfpscap(getgenv().AutofarmSettings.Main.Fps)
+end
 
 -- Visual optimization classes
 local visualClasses = {
