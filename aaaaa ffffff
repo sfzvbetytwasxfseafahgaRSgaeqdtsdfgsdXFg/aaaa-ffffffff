@@ -744,9 +744,12 @@ end)
 
 -- Webhook function
 local function sendWebhook()
-    if not getgenv().AutofarmSettings.Webhook.Webhook or getgenv().AutofarmSettings.Webhook.Webhook == "" then return end
+    if not getgenv().AutofarmSettings.Webhook.Webhook or getgenv().AutofarmSettings.Webhook.Webhook == "" then 
+        warn("[Prime DHC Auto Farm] No webhook URL configured")
+        return 
+    end
     
-    pcall(function()
+    local success, err = pcall(function()
         local currentCash = Player.DataFolder.Currency.Value
         local profit = currentCash - startCash
         local elapsed = tick() - startTime
@@ -810,27 +813,43 @@ local function sendWebhook()
             }}
         }
         
-        local success, response = pcall(function()
-            return HttpService:PostAsync(
-                getgenv().AutofarmSettings.Webhook.Webhook,
-                HttpService:JSONEncode(data),
-                Enum.HttpContentType.ApplicationJson
-            )
-        end)
+        local jsonData = HttpService:JSONEncode(data)
+        local response = HttpService:PostAsync(
+            getgenv().AutofarmSettings.Webhook.Webhook,
+            jsonData,
+            Enum.HttpContentType.ApplicationJson
+        )
         
-        if not success then
-            warn("[Prime DHC Auto Farm] Webhook failed to send")
-        end
+        return true
     end)
+    
+    if not success then
+        warn("[Prime DHC Auto Farm] Webhook error:", err)
+    end
+    
+    return success
 end
 
 -- Webhook loop
 task.spawn(function()
+    -- Send initial webhook immediately
+    if getgenv().AutofarmSettings.Webhook.Webhook ~= "" then
+        task.wait(5) -- Wait 5 seconds for everything to initialize
+        pcall(sendWebhook)
+        print("[Prime DHC Auto Farm] Initial webhook sent")
+    end
+    
+    -- Then send on interval
     while true do
-        if getgenv().AutofarmSettings.Webhook.Webhook ~= "" then
-            pcall(sendWebhook)
-        end
         task.wait(getgenv().AutofarmSettings.Webhook.Interval)
+        if getgenv().AutofarmSettings.Webhook.Webhook ~= "" then
+            local success = pcall(sendWebhook)
+            if success then
+                print("[Prime DHC Auto Farm] Webhook sent successfully")
+            else
+                warn("[Prime DHC Auto Farm] Webhook send failed")
+            end
+        end
     end
 end)
 
