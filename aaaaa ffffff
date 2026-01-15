@@ -94,28 +94,28 @@ local function PotatofyParts()
         for _, obj in pairs(Workspace:GetDescendants()) do
             if not DescendantOfIgnore(obj) then
                 if obj:IsA("MeshPart") or obj:IsA("Part") then
-                    obj.Material = Enum.Material.Plastic
-                    obj.Reflectance = 0
-                    obj.Color = Color3.new(0.5, 0.5, 0.5)
+                    pcall(function() obj.Material = Enum.Material.Plastic end)
+                    pcall(function() obj.Reflectance = 0 end)
+                    pcall(function() obj.Color = Color3.new(0.5, 0.5, 0.5) end)
                     if obj:IsA("MeshPart") then
-                        obj.TextureID = ""
-                        obj.MeshId = ""
-                        obj.RenderFidelity = Enum.RenderFidelity.Automatic
+                        pcall(function() obj.TextureID = "" end)
+                        pcall(function() obj.MeshId = "" end)
+                        -- Skip RenderFidelity as it cannot be changed at runtime
                     end
                     partCount = partCount + 1
                     if partCount % 100 == 0 then
                         task.wait() -- Yield to prevent lag
                     end
                 elseif obj:IsA("SpecialMesh") or obj:IsA("BlockMesh") or obj:IsA("FileMesh") then
-                    obj:Destroy()
+                    pcall(function() obj:Destroy() end)
                 end
             end
         end
         
         for _, v in pairs(MaterialService:GetChildren()) do
-            v:Destroy()
+            pcall(function() v:Destroy() end)
         end
-        MaterialService.Use2022Materials = false
+        pcall(function() MaterialService.Use2022Materials = false end)
     end)
 end
 
