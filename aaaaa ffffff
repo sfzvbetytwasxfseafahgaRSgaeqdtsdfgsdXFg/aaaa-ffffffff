@@ -592,7 +592,7 @@ local function collectMoney(moneyPart)
     end
 end
 
--- FIXED: Rob target with proper connection cleanup and safe hook
+-- Rob target with ORIGINAL working hook system
 local function robTarget(targetModel, openPart)
     local char = Player.Character
     if not char or not char.Parent then return end
@@ -619,108 +619,79 @@ local function robTarget(targetModel, openPart)
         task.wait(0.6)
     end
     
-    -- FIXED: Simpler hook that doesn't cause recursion
-    local oldNamecall
-    oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
-        local method = getnamecallmethod()
-        if method == "FireServer" and self.Name == "MainEvent" then
-            local args = {...}
-            if args[1] == "UpdateMousePos" or args[1] == "UpdateMousePosI" or args[1] == "MousePos" then
-                args[2] = aimPosition
-                return oldNamecall(self, unpack(args))
+    -- ORIGINAL hook system that worked
+    local __index
+    __index = hookmetamethod(game, "__index", function(t, k)
+        if t:IsA("Mouse") and (k == "Hit" or k == "Target") then
+            if k == "Hit" then
+                return CFrame.new(aimPosition)
+            elseif k == "Target" then
+                return targetHead
             end
         end
-        return oldNamecall(self, ...)
+        return __index(t, k)
     end)
     
     local shootStart = tick()
     local shootConn
-    local connectionActive = true
-    
-    -- FIXED: Wrapped in pcall and ensures cleanup
-    local success = pcall(function()
-        shootConn = RunService.RenderStepped:Connect(function()
-            if not connectionActive or (tick() - shootStart) > getgenv().MaxAttackTime or targetModel.Humanoid.Health <= 0 then
-                if shootConn then
-                    shootConn:Disconnect()
-                    shootConn = nil
-                end
-                connectionActive = false
-                return
+    shootConn = RunService.RenderStepped:Connect(function()
+        if (tick() - shootStart) > getgenv().MaxAttackTime or targetModel.Humanoid.Health <= 0 then
+            if shootConn then
+                shootConn:Disconnect()
             end
-            
-            pcall(function()
-                if UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter then
-                    hrp.CFrame = CFrame.lookAt(hrp.Position, aimPosition)
-                end
-                
-                local equipped = char:FindFirstChildOfClass("Tool")
-                if equipped and string.lower(equipped.Name):find("aug") then
-                    equipped:Activate()
-                    task.wait(0.05)
-                    equipped:Activate()
-                else
-                    tool = getAUGTool()
-                    if tool then
-                        hum:EquipTool(tool)
-                        task.wait(0.4)
-                    end
-                end
-            end)
-        end)
-        
-        while targetModel.Humanoid.Health > 0 and (tick() - shootStart) < getgenv().MaxAttackTime and connectionActive do
-            task.wait(0.1)
+            return
+        end
+        if UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter then
+            hrp.CFrame = CFrame.lookAt(hrp.Position, aimPosition)
+        end
+        local equipped = char:FindFirstChildOfClass("Tool")
+        if equipped and string.lower(equipped.Name):find("aug") then
+            equipped:Activate()
+            task.wait(0.05)
+            equipped:Activate()
+        else
+            tool = getAUGTool()
+            if tool then
+                hum:EquipTool(tool)
+                task.wait(0.4)
+            end
         end
     end)
     
-    -- FIXED: Always cleanup connections
-    connectionActive = false
-    if shootConn then
-        shootConn:Disconnect()
-        shootConn = nil
+    while targetModel.Humanoid.Health > 0 and (tick() - shootStart) < getgenv().MaxAttackTime do
+        task.wait(0.1)
     end
     
-    -- FIXED: Restore hook properly
-    if oldNamecall then
-        hookmetamethod(game, "__namecall", oldNamecall)
+    if shootConn then
+        shootConn:Disconnect()
     end
+    hookmetamethod(game, "__index", __index)
     
     randomDelay(getgenv().SpawnWait, getgenv().SpawnWait + 0.3)
     
-    -- FIXED: Better cash collection with safety checks
-    local targetPos = targetModel.PrimaryPart and targetModel.PrimaryPart.Position or 
-                     (targetModel:FindFirstChild("HumanoidRootPart") and targetModel.HumanoidRootPart.Position) or 
-                     openPart.Position
-    
+    local targetPos = targetModel.PrimaryPart and targetModel.PrimaryPart.Position or (targetModel:FindFirstChild("HumanoidRootPart") and targetModel.HumanoidRootPart.Position) or openPart.Position
     hrp.CFrame = CFrame.new(targetPos + Vector3.new(0, 3, 0))
     hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
     
     local vacuumStart = tick()
-    local cashCollected = 0
-    
     while (tick() - vacuumStart) < getgenv().CollectTime do
         local dropsFolder = Workspace:FindFirstChild("Ignored")
-        if not dropsFolder then break end
-        
-        local dropFolder = dropsFolder:FindFirstChild("Drop")
-        if not dropFolder then break end
-        
         local foundCash = false
-        for _, cashPart in pairs(dropFolder:GetChildren()) do
-            if (tick() - vacuumStart) >= getgenv().CollectTime then break end
-            
-            if cashPart:IsA("Part") and cashPart.Name == "MoneyDrop" then
-                local dist = (cashPart.Position - targetPos).Magnitude
-                if dist <= getgenv().CollectRange then
-                    foundCash = true
-                    collectMoney(cashPart)
-                    cashCollected = cashCollected + 1
-                    randomDelay(0.1, 0.2)
+        if dropsFolder then
+            local dropFolder = dropsFolder:FindFirstChild("Drop")
+            if dropFolder then
+                for _, cashPart in pairs(dropFolder:GetChildren()) do
+                    if cashPart:IsA("Part") and cashPart.Name == "MoneyDrop" then
+                        local dist = (cashPart.Position - targetPos).Magnitude
+                        if dist <= getgenv().CollectRange then
+                            foundCash = true
+                            collectMoney(cashPart)
+                            randomDelay(0.1, 0.2)
+                        end
+                    end
                 end
             end
         end
-        
         if not foundCash then
             randomDelay(0.2, 0.4)
         end
