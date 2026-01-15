@@ -222,12 +222,6 @@ end
 -- FIXED: Optimized heartbeat loop with proper timing
 local lastCleanupTime = tick()
 local function InitAntiLag()
-    RemoveVisualObjects()
-    DisableShadows()
-    PotatofyParts()
-    OptimizeRendering()
-    MonitorNewObjects()
-    
     -- FIXED: More efficient heartbeat loop
     RunService.Heartbeat:Connect(function()
         local currentTime = tick()
@@ -252,10 +246,24 @@ local function InitAntiLag()
     end)
 end
 
+-- Run InitAntiLag immediately (just sets up the loop)
 local success, err = pcall(InitAntiLag)
 if not success then
     warn("[Prime DHC Auto Farm] AntiLag initialization failed:", err)
 end
+
+-- Run initial optimization in background after everything loads
+task.spawn(function()
+    task.wait(2) -- Let everything load first
+    pcall(OptimizeRendering)
+    pcall(MonitorNewObjects)
+    task.wait(1)
+    pcall(RemoveVisualObjects)
+    task.wait(1)
+    pcall(DisableShadows)
+    task.wait(1)
+    pcall(PotatofyParts)
+end)
 
 -- Variables
 local startTime
