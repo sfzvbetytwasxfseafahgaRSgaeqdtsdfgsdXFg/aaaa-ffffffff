@@ -2,7 +2,6 @@ if not getgenv().Data or not getgenv().Data .authenticated then
     game:GetService("Players").LocalPlayer:Kick("Run the loader first")
     return
 end
-
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local VirtualUser = game:GetService("VirtualUser")
@@ -523,7 +522,7 @@ local function robTarget(targetModel, openPart)
     randomDelay(getgenv().SpawnWait, getgenv().SpawnWait + 0.3)
     local vacuumStart = tick()
     local targetPos = targetModel.PrimaryPart and targetModel.PrimaryPart.Position or (targetModel:FindFirstChild("HumanoidRootPart") and targetModel.HumanoidRootPart.Position) or openPart.Position
-    hrp.CFrame = CFrame.new(targetPos + Vector3.new(0, 3, 0))
+    hrp.CFrame = CFrame.new(targetPos + Vector3.new(0, 3, 0)
     hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
     while (tick() - vacuumStart) < getgenv().CollectTime do
         local dropsFolder = Workspace:FindFirstChild("Ignored")
@@ -550,6 +549,7 @@ local function robTarget(targetModel, openPart)
     hrp.CFrame = CFrame.new(9999, 50, 9999)
 end
 local function performHop()
+    sendEventWebhook("Server Hop", "Switching to new server...")
     if _G.farmGui then _G.farmGui:Destroy() end
     local placeId = game.PlaceId
     local jobId = game.JobId
@@ -580,37 +580,168 @@ task.spawn(function()
         end
     end
 end)
+-- FIXED WEBHOOK IMPLEMENTATION FOR DA HOOD AUTO FARM
+-- Place this in the auto farm section, replacing the existing sendWebhook function and task.spawn
+
 local function sendWebhook()
-    if getgenv().AutofarmSettings.Webhook.Webhook == "" then return end
+    -- Check if webhook URL is provided and valid
+    if not getgenv().AutofarmSettings.Webhook.Webhook or
+       getgenv().AutofarmSettings.Webhook.Webhook == "" or
+       not string.match(getgenv().AutofarmSettings.Webhook.Webhook, "^https://discord%.com/api/webhooks/") then
+        warn("[Webhook] Invalid or missing URL - skipping send")
+        return
+    end
+   
     local currentCash = Player.DataFolder.Currency.Value
     local profit = currentCash - startCash
     local elapsed = tick() - startTime
     local hours = math.floor(elapsed / 3600)
     local minutes = math.floor((elapsed % 3600) / 60)
-    local data = {
+    local seconds = math.floor(elapsed % 60)
+   
+    local profitPerHour = elapsed > 0 and (profit / elapsed * 3600) or 0
+   
+    -- Create embed data
+    local embedData = {
         ["username"] = "Prime Farm Logger",
+        ["avatar_url"] = "https://i.imgur.com/AfFp7pu.png", -- Optional: add your avatar
         ["embeds"] = {{
-            ["title"] = "Farm Update: " .. Player.Name,
-            ["description"] = "Running for " .. hours .. "h " .. minutes .. "m",
-            ["color"] = 1752220,
+            ["title"] = "Farm Update",
+            ["description"] = "Player: " .. Player.Name .. "\nDisplay Name: " .. Player.DisplayName,
+            ["color"] = (profit >= 0) and 65535 or 16711680,  -- Bright cyan if profit, red if loss
             ["fields"] = {
-                {name = "Current Cash", value = formatMoney(currentCash), inline = true},
-                {name = "Total Profit", value = formatMoney(profit), inline = true},
-                {name = "FPS", value = tostring(fpsVar), inline = true}
+                {
+                    ["name"] = "Current Cash",
+                    ["value"] = formatMoney(currentCash),
+                    ["inline"] = true
+                },
+                {
+                    ["name"] = "Total Profit",
+                    ["value"] = formatMoney(profit),
+                    ["inline"] = true
+                },
+                {
+                    ["name"] = "Time Running",
+                    ["value"] = string.format("%02dh %02dm %02ds", hours, minutes, seconds),
+                    ["inline"] = true
+                },
+                {
+                    ["name"] = "FPS",
+                    ["value"] = tostring(fpsVar),
+                    ["inline"] = true
+                },
+                {
+                    ["name"] = "Profit/Hour",
+                    ["value"] = formatMoney(profitPerHour),
+                    ["inline"] = true
+                }
+            },
+            ["timestamp"] = os.date("!%Y-%m-%dT%H:%M:%S"),
+            ["footer"] = {
+                ["text"] = "Prime DHC Auto Farm"
             }
         }}
     }
+   
+    -- Use proper HTTP request method with retries
+    local req = http_request or request or syn.request or fluxus.request
+    if not req then
+        warn("[Webhook] No HTTP request function available in executor")
+        return
+    end
+   
+    local success = false
+    for attempt = 1, 3 do
+        local response, err = pcall(function()
+            return req({
+                Url = getgenv().AutofarmSettings.Webhook.Webhook,
+                Method = "POST",
+                Headers = {
+                    ["Content-Type"] = "application/json"
+                },
+                Body = HttpService:JSONEncode(embedData)
+            })
+        end)
+       
+        if response then
+            if err.StatusCode == 204 or err.StatusCode == 200 then
+                print("[Webhook] Successfully sent update (attempt " .. attempt .. ")")
+                success = true
+                break
+            else
+                warn("[Webhook] Failed with status code: " .. tostring(err.StatusCode) .. " (attempt " .. attempt .. ")")
+            end
+        else
+            warn("[Webhook] Error during request (attempt " .. attempt .. "): " .. tostring(err))
+        end
+       
+        task.wait(2)  -- Delay before retry
+    end
+   
+    if not success then
+        warn("[Webhook] Failed after 3 attempts")
+    end
+end
+
+-- Webhook loop with better error handling
+task.spawn(function()
+    -- Wait a bit before first webhook to ensure everything is loaded
+    task.wait(5)
+   
+    while true do
+        if getgenv().AutofarmSettings.Webhook.Webhook and
+           getgenv().AutofarmSettings.Webhook.Webhook ~= "" then
+            local success, err = pcall(sendWebhook)
+            if not success then
+                warn("[Webhook Loop] Error: " .. tostring(err))
+            end
+        end
+       
+        -- Use the interval setting (convert to seconds if needed)
+        local interval = getgenv().AutofarmSettings.Webhook.Interval or 30
+        task.wait(interval)
+    end
+end)
+
+-- Optional: Send webhook on significant events
+local function sendEventWebhook(eventType, details)
+    if not getgenv().AutofarmSettings.Webhook.Webhook or
+       getgenv().AutofarmSettings.Webhook.Webhook == "" then
+        return
+    end
+   
+    local embedData = {
+        ["username"] = "Prime Farm Logger",
+        ["embeds"] = {{
+            ["title"] = "Farm Event: " .. eventType,
+            ["description"] = details,
+            ["color"] = 16776960, -- Yellow color for events
+            ["timestamp"] = os.date("!%Y-%m-%dT%H:%M:%S"),
+            ["footer"] = {
+                ["text"] = "Prime DHC Auto Farm"
+            }
+        }}
+    }
+   
+    local req = http_request or request or syn.request or fluxus.request
+    if not req then return end
+   
     pcall(function()
-        HttpService:PostAsync(getgenv().AutofarmSettings.Webhook.Webhook, HttpService:JSONEncode(data), Enum.HttpContentType.ApplicationJson)
+        req({
+            Url = getgenv().AutofarmSettings.Webhook.Webhook,
+            Method = "POST",
+            Headers = {
+                ["Content-Type"] = "application/json"
+            },
+            Body = HttpService:JSONEncode(embedData)
+        })
     end)
 end
+
+-- Send initial webhook when farm starts
 task.spawn(function()
-    while true do
-        if getgenv().AutofarmSettings.Webhook.Webhook ~= "" then
-            pcall(sendWebhook)
-        end
-        task.wait(getgenv().AutofarmSettings.Webhook.Interval)
-    end
+    task.wait(3)
+    sendEventWebhook("Farm Started", "Player: " .. Player.Name .. "\nStarting Cash: " .. formatMoney(startCash))
 end)
 local MainEvent = ReplicatedStorage:WaitForChild("MainEvent")
 local function getEquippedTool()
@@ -648,6 +779,7 @@ Player.CharacterAdded:Connect(function(newChar)
     autoBuy()
     startTime = tick()
     startCash = Player.DataFolder.Currency.Value
+    sendEventWebhook("Respawn", "Character respawned - restarting farm")
     local ok, err = pcall(updateGUI)
     if not ok then
     end
@@ -680,7 +812,6 @@ task.spawn(function()
         task.wait(1)
     end
 end)
-
 while wait() do
     pcall(function()
         if game:GetService("Players").LocalPlayer.Character:FindFirstChild("BodyEffects"):FindFirstChild("K.O").Value == true then
