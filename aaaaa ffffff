@@ -3,6 +3,57 @@ if not getgenv().Data or not getgenv().Data.authenticated then
     return
 end
 
+-- ===== COMPATIBILITY LAYER FOR MISSING FUNCTIONS =====
+-- Add this at the very top before any other code
+
+-- fireclickdetector compatibility
+if not fireclickdetector then
+    getgenv().fireclickdetector = function(clickDetector, distance)
+        distance = distance or 0
+        local VirtualInputManager = game:GetService("VirtualInputManager")
+        local camera = workspace.CurrentCamera
+        
+        -- Get the part that has the ClickDetector
+        local part = clickDetector.Parent
+        if not part or not part:IsA("BasePart") then
+            return
+        end
+        
+        -- Store original CFrame
+        local originalCFrame = camera.CFrame
+        
+        -- Point camera at the part
+        camera.CFrame = CFrame.new(camera.CFrame.Position, part.Position)
+        
+        -- Fire the click
+        pcall(function()
+            clickDetector:Fire()
+        end)
+        
+        -- Also try direct invocation
+        pcall(function()
+            for _, connection in pairs(getconnections(clickDetector.MouseClick)) do
+                connection:Fire()
+            end
+        end)
+        
+        -- Restore camera
+        camera.CFrame = originalCFrame
+    end
+end
+
+-- hookmetamethod compatibility
+if not hookmetamethod then
+    getgenv().hookmetamethod = function(game, method, hook)
+        -- Return a dummy function that returns the hook
+        return function(t, k)
+            return hook(t, k)
+        end
+    end
+end
+
+-- ===== END COMPATIBILITY LAYER =====
+
 -- Services
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -128,11 +179,10 @@ local function PotatofyParts()
                     if obj:IsA("MeshPart") then
                         pcall(function() obj.TextureID = "" end)
                         pcall(function() obj.MeshId = "" end)
-                        -- Skip RenderFidelity as it cannot be changed at runtime
                     end
                     partCount = partCount + 1
                     if partCount % 100 == 0 then
-                        task.wait() -- Yield to prevent lag
+                        task.wait()
                     end
                 elseif obj:IsA("SpecialMesh") or obj:IsA("BlockMesh") or obj:IsA("FileMesh") then
                     pcall(function() obj:Destroy() end)
@@ -221,7 +271,6 @@ local function MonitorNewObjects()
     Workspace.DescendantAdded:Connect(function(obj)
         pcall(function()
             if not DescendantOfIgnore(obj) then
-                -- Skip ALL descendants of BULLET_RAYS and MoneyDrop
                 local parent = obj.Parent
                 while parent do
                     if parent.Name == "BULLET_RAYS" or parent.Name == "MoneyDrop" then
@@ -256,10 +305,8 @@ local function MonitorNewObjects()
     end)
 end
 
--- FIXED: Optimized heartbeat loop with proper timing
 local lastCleanupTime = tick()
 local function InitAntiLag()
-    -- FIXED: More efficient heartbeat loop
     RunService.Heartbeat:Connect(function()
         local currentTime = tick()
         if currentTime - lastCleanupTime >= 30 then
@@ -271,7 +318,6 @@ local function InitAntiLag()
             end)
         end
         
-        -- Quick settings check every frame
         pcall(function()
             sethiddenproperty(Lighting, "Technology", Enum.Technology.Compatibility)
             if settings().Rendering then
@@ -283,15 +329,13 @@ local function InitAntiLag()
     end)
 end
 
--- Run InitAntiLag immediately (just sets up the loop)
 local success, err = pcall(InitAntiLag)
 if not success then
     warn("[Prime DHC Auto Farm] AntiLag initialization failed:", err)
 end
 
--- Run initial optimization in background after everything loads
 task.spawn(function()
-    task.wait(2) -- Let everything load first
+    task.wait(2)
     pcall(OptimizeRendering)
     pcall(MonitorNewObjects)
     task.wait(1)
@@ -437,7 +481,6 @@ end
 local gui, blackScreen = setupGUI()
 local isBlackScreenEnabled = true
 
--- Toggle black screen with comma key
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
     if input.KeyCode == Enum.KeyCode.Comma then
@@ -446,7 +489,6 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     end
 end)
 
--- Update GUI function
 local function updateGUI()
     pcall(function()
         if not gui or not gui:FindFirstChild("MainFrame") or not gui.MainFrame:FindFirstChild("StatsContainer") then return end
@@ -474,7 +516,6 @@ local function updateGUI()
     end)
 end
 
--- Wait for game to load
 if not Player.Character then
     Player.CharacterAdded:Wait()
 end
@@ -485,20 +526,17 @@ repeat task.wait() until Player.Character:FindFirstChild("HumanoidRootPart")
 repeat task.wait() until Player:FindFirstChild("DataFolder")
 repeat task.wait() until Player.DataFolder:FindFirstChild("Currency")
 
--- Settings
 getgenv().MaxAttackTime = 10
 getgenv().CollectRange = 50
 getgenv().CollectTime = 5
 getgenv().SpawnWait = 1.5
 getgenv().ReloadThreshold = 3
 
--- Initialize values
 startTime = tick()
 startCash = Player.DataFolder.Currency.Value
 
 pcall(updateGUI)
 
--- GUI update loop
 task.spawn(function()
     while true do
         pcall(updateGUI)
@@ -506,14 +544,12 @@ task.spawn(function()
     end
 end)
 
--- Random delay helper
 local function randomDelay(min, max)
     min = min or getgenv().AutofarmSettings.Main.Delay
     max = max or min + 0.2
     task.wait(math.random(min * 100, max * 100) / 100)
 end
 
--- Check if player has AUG
 local function hasAUG()
     local containers = {Player.Backpack}
     local char = Player.Character
@@ -531,7 +567,6 @@ local function hasAUG()
     return false
 end
 
--- Get AUG tool
 local function getAUGTool()
     local char = Player.Character
     if not char then return nil end
@@ -551,11 +586,9 @@ local function getAUGTool()
     return nil
 end
 
--- Shop positions
 local augBuyPos = Vector3.new(-273.0153041799, 52.2666088321, -216.104867764)
 local ammoBuyPos = Vector3.new(-277.8882854219, 52.3626088321, -217.0169677738)
 
--- Find shop item
 local function findShopItem(pos, isAmmo)
     local shop = workspace:WaitForChild("Ignored"):WaitForChild("Shop")
     local minDist = math.huge
@@ -581,7 +614,6 @@ local function findShopItem(pos, isAmmo)
     return bestCD, bestHead, minDist, bestName
 end
 
--- Buy item from shop
 local function buyItem(pos, isAmmo)
     local char = Player.Character
     if not char then return false end
@@ -608,7 +640,6 @@ local function buyItem(pos, isAmmo)
     end
 end
 
--- Auto buy AUG and ammo
 local function autoBuy()
     if not hasAUG() then
         buyItem(augBuyPos, false)
@@ -619,7 +650,6 @@ end
 
 autoBuy()
 
--- Collect money function
 local function collectMoney(moneyPart)
     if moneyPart and moneyPart.Parent then
         local cd = moneyPart:FindFirstChild("ClickDetector")
@@ -629,7 +659,7 @@ local function collectMoney(moneyPart)
     end
 end
 
--- Rob target with ORIGINAL working hook system
+-- IMPROVED robTarget function with better Mouse simulation
 local function robTarget(targetModel, openPart)
     local char = Player.Character
     if not char or not char.Parent then return end
@@ -656,18 +686,25 @@ local function robTarget(targetModel, openPart)
         task.wait(0.6)
     end
     
-    -- ORIGINAL hook system that worked
-    local __index
-    __index = hookmetamethod(game, "__index", function(t, k)
-        if t:IsA("Mouse") and (k == "Hit" or k == "Target") then
-            if k == "Hit" then
-                return CFrame.new(aimPosition)
-            elseif k == "Target" then
-                return targetHead
+    -- Use getconnections for Mouse hooks if available
+    local useConnections = getconnections ~= nil
+    local originalHook
+    
+    if not useConnections then
+        -- Fallback to hookmetamethod
+        local __index
+        __index = hookmetamethod(game, "__index", function(t, k)
+            if t:IsA("Mouse") and (k == "Hit" or k == "Target") then
+                if k == "Hit" then
+                    return CFrame.new(aimPosition)
+                elseif k == "Target" then
+                    return targetHead
+                end
             end
-        end
-        return __index(t, k)
-    end)
+            return __index(t, k)
+        end)
+        originalHook = __index
+    end
     
     local shootStart = tick()
     local shootConn
@@ -702,7 +739,10 @@ local function robTarget(targetModel, openPart)
     if shootConn then
         shootConn:Disconnect()
     end
-    hookmetamethod(game, "__index", __index)
+    
+    if not useConnections and originalHook then
+        hookmetamethod(game, "__index", originalHook)
+    end
     
     randomDelay(getgenv().SpawnWait, getgenv().SpawnWait + 0.3)
     
@@ -737,7 +777,6 @@ local function robTarget(targetModel, openPart)
     hrp.CFrame = CFrame.new(9999, 50, 9999)
 end
 
--- Server hop function
 local function performHop()
     if _G.farmGui then _G.farmGui:Destroy() end
     
@@ -750,262 +789,4 @@ local function performHop()
         local data = HttpService:JSONDecode(result.Body)
         if data and data.data and #data.data > 0 then
             for _, server in pairs(data.data) do
-                if server.id ~= jobId and server.playing < server.maxPlayers - 1 then
-                    TeleportService:TeleportToPlaceInstance(placeId, server.id)
-                    return
-                end
-            end
-            TeleportService:Teleport(placeId)
-        end
-    else
-        TeleportService:Teleport(placeId)
-    end
-end
-
--- Server hop loop
-task.spawn(function()
-    while true do
-        if getgenv().AutofarmSettings.ServerHop.Enabled then
-            task.wait(getgenv().AutofarmSettings.ServerHop.Interval * 60)
-            pcall(performHop)
-        else
-            task.wait(10)
-        end
-    end
-end)
-
--- Webhook function
-local function sendWebhook()
-    if not getgenv().AutofarmSettings.Webhook.Webhook or getgenv().AutofarmSettings.Webhook.Webhook == "" then 
-        warn("[Prime DHC Auto Farm] No webhook URL configured")
-        return false
-    end
-    
-    -- Safety check: ensure all data is available
-    if not Player or not Player.DataFolder or not Player.DataFolder:FindFirstChild("Currency") then
-        warn("[Prime DHC Auto Farm] Player data not ready for webhook")
-        return false
-    end
-    
-    if not startCash or not startTime then
-        warn("[Prime DHC Auto Farm] Start values not initialized")
-        return false
-    end
-    
-    local success, err = pcall(function()
-        local currentCash = Player.DataFolder.Currency.Value
-        local profit = currentCash - startCash
-        local elapsed = tick() - startTime
-        local hours = math.floor(elapsed / 3600)
-        local minutes = math.floor((elapsed % 3600) / 60)
-        local seconds = math.floor(elapsed % 60)
-        
-        -- Calculate per hour rates
-        local profitPerHour = 0
-        if elapsed > 0 then
-            profitPerHour = (profit / elapsed) * 3600
-        end
-        
-        local data = {
-            ["username"] = "Prime DHC Auto Farm",
-            ["embeds"] = {{
-                ["title"] = "Farm Status Report",
-                ["description"] = "**User:** " .. Player.Name .. "\n**Display Name:** " .. Player.DisplayName,
-                ["color"] = 65535,
-                ["fields"] = {
-                    {
-                        ["name"] = "Runtime",
-                        ["value"] = string.format("%02d:%02d:%02d", hours, minutes, seconds),
-                        ["inline"] = true
-                    },
-                    {
-                        ["name"] = "FPS",
-                        ["value"] = tostring(fpsVar),
-                        ["inline"] = true
-                    },
-                    {
-                        ["name"] = "Server Size",
-                        ["value"] = tostring(#Players:GetPlayers()) .. " players",
-                        ["inline"] = true
-                    },
-                    {
-                        ["name"] = "Starting Cash",
-                        ["value"] = formatMoney(startCash),
-                        ["inline"] = true
-                    },
-                    {
-                        ["name"] = "Current Cash",
-                        ["value"] = formatMoney(currentCash),
-                        ["inline"] = true
-                    },
-                    {
-                        ["name"] = "Total Profit",
-                        ["value"] = formatMoney(profit),
-                        ["inline"] = true
-                    },
-                    {
-                        ["name"] = "Profit Per Hour",
-                        ["value"] = formatMoney(profitPerHour),
-                        ["inline"] = false
-                    }
-                },
-                ["footer"] = {
-                    ["text"] = "Prime DHC • discord.gg/primedhc"
-                },
-                ["timestamp"] = os.date("!%Y-%m-%dT%H:%M:%S")
-            }}
-        }
-        
-        local jsonData = HttpService:JSONEncode(data)
-        
-        -- Use request function (Seliware supports this)
-        local req = http_request or request or syn.request or fluxus.request
-        if req then
-            local response = req({
-                Url = getgenv().AutofarmSettings.Webhook.Webhook,
-                Method = "POST",
-                Headers = {
-                    ["Content-Type"] = "application/json"
-                },
-                Body = jsonData
-            })
-            print("[Prime DHC Auto Farm] Webhook sent via request - Status:", response.StatusCode or "Unknown")
-            return true
-        else
-            -- Fallback to HttpService
-            local response = HttpService:PostAsync(
-                getgenv().AutofarmSettings.Webhook.Webhook,
-                jsonData,
-                Enum.HttpContentType.ApplicationJson,
-                false
-            )
-            print("[Prime DHC Auto Farm] Webhook sent via HttpService")
-            return true
-        end
-    end)
-    
-    if not success then
-        warn("[Prime DHC Auto Farm] Webhook error:", tostring(err))
-        return false
-    end
-    
-    return success
-end
-
--- Webhook loop
-task.spawn(function()
-    -- Send initial webhook immediately
-    if getgenv().AutofarmSettings.Webhook.Webhook ~= "" then
-        task.wait(5) -- Wait 5 seconds for everything to initialize
-        pcall(sendWebhook)
-        print("[Prime DHC Auto Farm] Initial webhook sent")
-    end
-    
-    -- Then send on interval
-    while true do
-        task.wait(getgenv().AutofarmSettings.Webhook.Interval)
-        if getgenv().AutofarmSettings.Webhook.Webhook ~= "" then
-            local success = pcall(sendWebhook)
-            if success then
-                print("[Prime DHC Auto Farm] Webhook sent successfully")
-            else
-                warn("[Prime DHC Auto Farm] Webhook send failed")
-            end
-        end
-    end
-end)
-
--- Auto reload
-local MainEvent = ReplicatedStorage:WaitForChild("MainEvent")
-
-local function getEquippedTool()
-    local char = Player.Character
-    return char and char:FindFirstChildOfClass("Tool")
-end
-
-local function needsReload(tool)
-    if not tool then return false end
-    local ammo = tool:FindFirstChild("Ammo")
-    if ammo and ammo:IsA("IntValue") then
-        return ammo.Value <= getgenv().ReloadThreshold
-    end
-    return true
-end
-
-local function doReload()
-    local tool = getEquippedTool()
-    if tool and needsReload(tool) and MainEvent.Parent then
-        MainEvent:FireServer("Reload", tool)
-        return true
-    end
-    return false
-end
-
--- Auto reload loop
-task.spawn(function()
-    while true do
-        pcall(doReload)
-        task.wait(0.12 + math.random(0, 8)/100)
-    end
-end)
-
--- Anti-idle
-Player.Idled:Connect(function()
-    VirtualUser:CaptureController()
-    VirtualUser:ClickButton2(Vector2.new())
-end)
-
--- Character respawn handler
-Player.CharacterAdded:Connect(function(newChar)
-    local hrp = newChar:WaitForChild("HumanoidRootPart")
-    autoBuy()
-    startTime = tick()
-    startCash = Player.DataFolder.Currency.Value
-    pcall(updateGUI)
-end)
-
--- Main farming loop
-task.spawn(function()
-    while true do
-        pcall(function()
-            local foundTarget = false
-            local cashiersFolder = Workspace:FindFirstChild("Cashiers")
-            
-            if cashiersFolder then
-                for _, cashierModel in pairs(cashiersFolder:GetChildren()) do
-                    local humanoid = cashierModel:FindFirstChild("Humanoid")
-                    if humanoid and humanoid.Health > 0 then
-                        local openPart = cashierModel:FindFirstChild("Open")
-                        if openPart then
-                            foundTarget = true
-                            robTarget(cashierModel, openPart)
-                            
-                            local speed = getgenv().AutofarmSettings.Main.Speed
-                            local minDelay = 0.5 / speed
-                            local maxDelay = minDelay + 0.2
-                            randomDelay(minDelay, maxDelay)
-                        end
-                    end
-                end
-            end
-            
-            if not foundTarget then
-                randomDelay(5, 7)
-            end
-        end)
-        task.wait(1)
-    end
-end)
-
--- Auto-respawn on knockout
-while wait() do
-    pcall(function()
-        if game:GetService("Players").LocalPlayer.Character:FindFirstChild("BodyEffects"):FindFirstChild("K.O").Value == true then
-            for i, v in pairs(game:GetService("Players").LocalPlayer.Character:GetChildren()) do
-                if v:IsA("BasePart") then
-                    v:Destroy()
-                end
-            end
-        end
-    end)
-end
+                if server.id ~= jobId and server.playing < server.
