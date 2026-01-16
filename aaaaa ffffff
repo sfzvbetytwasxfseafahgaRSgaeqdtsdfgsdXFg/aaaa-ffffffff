@@ -105,7 +105,6 @@ local function PotatofyParts()
                     if obj:IsA("MeshPart") then
                         pcall(function() obj.TextureID = "" end)
                         pcall(function() obj.MeshId = "" end)
-                        -- Skip RenderFidelity as it cannot be changed at runtime
                     end
                     partCount = partCount + 1
                     if partCount % 100 == 0 then
@@ -224,10 +223,9 @@ local function MonitorNewObjects()
     end)
 end
 
--- FIXED: Optimized heartbeat loop with proper timing
+-- Optimized heartbeat loop with proper timing
 local lastCleanupTime = tick()
 local function InitAntiLag()
-    -- FIXED: More efficient heartbeat loop
     RunService.Heartbeat:Connect(function()
         local currentTime = tick()
         if currentTime - lastCleanupTime >= 30 then
@@ -239,7 +237,6 @@ local function InitAntiLag()
             end)
         end
         
-        -- Quick settings check every frame
         pcall(function()
             sethiddenproperty(Lighting, "Technology", Enum.Technology.Compatibility)
             if settings().Rendering then
@@ -251,15 +248,13 @@ local function InitAntiLag()
     end)
 end
 
--- Run InitAntiLag immediately (just sets up the loop)
 local success, err = pcall(InitAntiLag)
 if not success then
     warn("[Prime DHC Auto Farm] AntiLag initialization failed:", err)
 end
 
--- Run initial optimization in background after everything loads
 task.spawn(function()
-    task.wait(2) -- Let everything load first
+    task.wait(2)
     pcall(OptimizeRendering)
     pcall(MonitorNewObjects)
     task.wait(1)
@@ -459,7 +454,7 @@ getgenv().CollectRange = 50
 getgenv().CollectTime = 5
 getgenv().SpawnWait = 1.5
 getgenv().ReloadThreshold = 3
-getgenv().AmmoCheckThreshold = 50 -- NEW: Check ammo when below this amount
+getgenv().AmmoLowThreshold = 100 -- Buy ammo when below this
 
 -- Initialize values
 startTime = tick()
@@ -520,8 +515,8 @@ local function getAUGTool()
     return nil
 end
 
--- NEW: Check current ammo count
-local function getCurrentAmmo()
+-- NEW: Get total ammo reserves
+local function getTotalAmmo()
     local tool = getAUGTool()
     if tool then
         local ammo = tool:FindFirstChild("Ammo")
@@ -530,11 +525,6 @@ local function getCurrentAmmo()
         end
     end
     return 0
-end
-
--- NEW: Check if needs ammo refill
-local function needsAmmo()
-    return getCurrentAmmo() < getgenv().AmmoCheckThreshold
 end
 
 -- Shop positions
@@ -568,7 +558,9 @@ local function findShopItem(pos, isAmmo)
 end
 
 -- Buy item from shop
-local function buyItem(pos, isAmmo)
+local function buyItem(pos, isAmmo, buyCount)
+    buyCount = buyCount or (isAmmo and 10 or 1)
+    
     local char = Player.Character
     if not char then return false end
     
@@ -581,10 +573,15 @@ local function buyItem(pos, isAmmo)
     local cd, head, dist, name = findShopItem(pos, isAmmo)
     if cd and head then
         if isAmmo then
-            for i = 1, 100 do
-                fireclickdetector(cd)
-                task.wait(0.035)
+            -- Buy ammo multiple times based on buyCount
+            for i = 1, buyCount do
+                for j = 1, 10 do
+                    fireclickdetector(cd)
+                    task.wait(0.035)
+                end
+                task.wait(0.1)
             end
+            print("[Prime DHC Auto Farm] Bought ammo " .. buyCount .. " times. Total ammo:", getTotalAmmo())
         else
             fireclickdetector(cd)
         end
@@ -594,24 +591,38 @@ local function buyItem(pos, isAmmo)
     end
 end
 
--- Auto buy AUG and ammo
-local function autoBuy()
+-- NEW: Initial setup - buy AUG and 10x ammo
+local function initialSetup()
+    print("[Prime DHC Auto Farm] Starting initial setup...")
+    
     if not hasAUG() then
+        print("[Prime DHC Auto Farm] Buying AUG...")
         buyItem(augBuyPos, false)
         task.wait(3)
     end
-    buyItem(ammoBuyPos, true)
-end
-
-autoBuy()
-
--- NEW: Buy just ammo (for refills during farming)
-local function buyAmmoOnly()
-    print("[Prime DHC Auto Farm] Buying ammo refill...")
-    buyItem(ammoBuyPos, true)
+    
+    print("[Prime DHC Auto Farm] Buying ammo 10 times for initial reserves...")
+    buyItem(ammoBuyPos, true, 10)
     task.wait(2)
-    print("[Prime DHC Auto Farm] Ammo refilled. Current ammo:", getCurrentAmmo())
+    
+    print("[Prime DHC Auto Farm] Initial setup complete. Total ammo:", getTotalAmmo())
 end
+
+-- NEW: Refill ammo when low (buy 10 more times)
+local function refillAmmo()
+    local currentAmmo = getTotalAmmo()
+    if currentAmmo < getgenv().AmmoLowThreshold then
+        print("[Prime DHC Auto Farm] Ammo low (" .. currentAmmo .. "). Refilling with 10 purchases...")
+        buyItem(ammoBuyPos, true, 10)
+        task.wait(2)
+        print("[Prime DHC Auto Farm] Ammo refilled. New total:", getTotalAmmo())
+        return true
+    end
+    return false
+end
+
+-- Run initial setup
+initialSetup()
 
 -- Collect money function
 local function collectMoney(moneyPart)
@@ -623,16 +634,13 @@ local function collectMoney(moneyPart)
     end
 end
 
--- Rob target with ORIGINAL working hook system
+-- Rob target with working hook system
 local function robTarget(targetModel, openPart)
     local char = Player.Character
     if not char or not char.Parent then return end
     
-    -- NEW: Check ammo before engaging target
-    if needsAmmo() then
-        print("[Prime DHC Auto Farm] Low ammo detected before robbing. Refilling...")
-        buyAmmoOnly()
-    end
+    -- NEW: Check and refill ammo before engaging
+    refillAmmo()
     
     local hrp = char.HumanoidRootPart
     local hum = char.Humanoid
@@ -656,7 +664,6 @@ local function robTarget(targetModel, openPart)
         task.wait(0.6)
     end
     
-    -- ORIGINAL hook system that worked
     local __index
     __index = hookmetamethod(game, "__index", function(t, k)
         if t:IsA("Mouse") and (k == "Hit" or k == "Target") then
@@ -766,247 +773,4 @@ end
 task.spawn(function()
     while true do
         if getgenv().AutofarmSettings.ServerHop.Enabled then
-            task.wait(getgenv().AutofarmSettings.ServerHop.Interval * 60)
-            pcall(performHop)
-        else
-            task.wait(10)
-        end
-    end
-end)
-
--- Webhook function
-local function sendWebhook()
-    if not getgenv().AutofarmSettings.Webhook.Webhook or getgenv().AutofarmSettings.Webhook.Webhook == "" then 
-        warn("[Prime DHC Auto Farm] No webhook URL configured")
-        return 
-    end
-    
-    local success, err = pcall(function()
-        local currentCash = Player.DataFolder.Currency.Value
-        local profit = currentCash - startCash
-        local elapsed = tick() - startTime
-        local hours = math.floor(elapsed / 3600)
-        local minutes = math.floor((elapsed % 3600) / 60)
-        local seconds = math.floor(elapsed % 60)
-        
-        -- Calculate per hour rates
-        local profitPerHour = 0
-        if elapsed > 0 then
-            profitPerHour = (profit / elapsed) * 3600
-        end
-        
-        local data = {
-            ["username"] = "Prime DHC Auto Farm",
-            ["embeds"] = {{
-                ["title"] = "Farm Status Report",
-                ["description"] = "**User:** " .. Player.Name .. "\n**Display Name:** " .. Player.DisplayName,
-                ["color"] = 65535,
-                ["fields"] = {
-                    {
-                        ["name"] = "Runtime",
-                        ["value"] = string.format("%02d:%02d:%02d", hours, minutes, seconds),
-                        ["inline"] = true
-                    },
-                    {
-                        ["name"] = "FPS",
-                        ["value"] = tostring(fpsVar),
-                        ["inline"] = true
-                    },
-                    {
-                        ["name"] = "Server Size",
-                        ["value"] = tostring(#Players:GetPlayers()) .. " players",
-                        ["inline"] = true
-                    },
-                    {
-                        ["name"] = "Starting Cash",
-                        ["value"] = formatMoney(startCash),
-                        ["inline"] = true
-                    },
-                    {
-                        ["name"] = "Current Cash",
-                        ["value"] = formatMoney(currentCash),
-                        ["inline"] = true
-                    },
-                    {
-                        ["name"] = "Total Profit",
-                        ["value"] = formatMoney(profit),
-                        ["inline"] = true
-                    },
-                    {
-                        ["name"] = "Profit Per Hour",
-                        ["value"] = formatMoney(profitPerHour),
-                        ["inline"] = false
-                    }
-                },
-                ["footer"] = {
-                    ["text"] = "Prime DHC • discord.gg/primedhc"
-                },
-                ["timestamp"] = os.date("!%Y-%m-%dT%H:%M:%S")
-            }}
-        }
-        
-        local jsonData = HttpService:JSONEncode(data)
-        
-        -- Try using request function (works better in some executors)
-        local req = http_request or request or syn.request or fluxus.request
-        if req then
-            local response = req({
-                Url = getgenv().AutofarmSettings.Webhook.Webhook,
-                Method = "POST",
-                Headers = {
-                    ["Content-Type"] = "application/json"
-                },
-                Body = jsonData
-            })
-            print("[Prime DHC Auto Farm] Webhook sent via request function - Status:", response.StatusCode)
-        else
-            -- Fallback to HttpService
-            local response = HttpService:PostAsync(
-                getgenv().AutofarmSettings.Webhook.Webhook,
-                jsonData,
-                Enum.HttpContentType.ApplicationJson,
-                false
-            )
-            print("[Prime DHC Auto Farm] Webhook sent via HttpService")
-        end
-        
-        return true
-    end)
-    
-    if not success then
-        warn("[Prime DHC Auto Farm] Webhook error:", err)
-    end
-    
-    return success
-end
-
--- Webhook loop
-task.spawn(function()
-    -- Send initial webhook immediately
-    if getgenv().AutofarmSettings.Webhook.Webhook ~= "" then
-        task.wait(5) -- Wait 5 seconds for everything to initialize
-        pcall(sendWebhook)
-        print("[Prime DHC Auto Farm] Initial webhook sent")
-    end
-    
-    -- Then send on interval
-    while true do
-        task.wait(getgenv().AutofarmSettings.Webhook.Interval)
-        if getgenv().AutofarmSettings.Webhook.Webhook ~= "" then
-            local success = pcall(sendWebhook)
-            if success then
-                print("[Prime DHC Auto Farm] Webhook sent successfully")
-            else
-                warn("[Prime DHC Auto Farm] Webhook send failed")
-            end
-        end
-    end
-end)
-
--- Auto reload
-local MainEvent = ReplicatedStorage:WaitForChild("MainEvent")
-
-local function getEquippedTool()
-    local char = Player.Character
-    return char and char:FindFirstChildOfClass("Tool")
-end
-
-local function needsReload(tool)
-    if not tool then return false end
-    local ammo = tool:FindFirstChild("Ammo")
-    if ammo and ammo:IsA("IntValue") then
-        return ammo.Value <= getgenv().ReloadThreshold
-    end
-    return true
-end
-
-local function doReload()
-    local tool = getEquippedTool()
-    if tool and needsReload(tool) and MainEvent.Parent then
-        MainEvent:FireServer("Reload", tool)
-        return true
-    end
-    return false
-end
-
--- Auto reload loop
-task.spawn(function()
-    while true do
-        pcall(doReload)
-        task.wait(0.12 + math.random(0, 8)/100)
-    end
-end)
-
--- NEW: Background ammo check loop
-task.spawn(function()
-    while true do
-        task.wait(30) -- Check every 30 seconds
-        pcall(function()
-            if needsAmmo() then
-                print("[Prime DHC Auto Farm] Low ammo detected in background check. Current:", getCurrentAmmo())
-                buyAmmoOnly()
-            end
-        end)
-    end
-end)
-
--- Anti-idle
-Player.Idled:Connect(function()
-    VirtualUser:CaptureController()
-    VirtualUser:ClickButton2(Vector2.new())
-end)
-
--- Character respawn handler
-Player.CharacterAdded:Connect(function(newChar)
-    local hrp = newChar:WaitForChild("HumanoidRootPart")
-    autoBuy()
-    startTime = tick()
-    startCash = Player.DataFolder.Currency.Value
-    pcall(updateGUI)
-end)
-
--- Main farming loop
-task.spawn(function()
-    while true do
-        pcall(function()
-            local foundTarget = false
-            local cashiersFolder = Workspace:FindFirstChild("Cashiers")
-            
-            if cashiersFolder then
-                for _, cashierModel in pairs(cashiersFolder:GetChildren()) do
-                    local humanoid = cashierModel:FindFirstChild("Humanoid")
-                    if humanoid and humanoid.Health > 0 then
-                        local openPart = cashierModel:FindFirstChild("Open")
-                        if openPart then
-                            foundTarget = true
-                            robTarget(cashierModel, openPart)
-                            
-                            local speed = getgenv().AutofarmSettings.Main.Speed
-                            local minDelay = 0.5 / speed
-                            local maxDelay = minDelay + 0.2
-                            randomDelay(minDelay, maxDelay)
-                        end
-                    end
-                end
-            end
-            
-            if not foundTarget then
-                randomDelay(5, 7)
-            end
-        end)
-        task.wait(1)
-    end
-end)
-
--- Auto-respawn on knockout
-while wait() do
-    pcall(function()
-        if game:GetService("Players").LocalPlayer.Character:FindFirstChild("BodyEffects"):FindFirstChild("K.O").Value == true then
-            for i, v in pairs(game:GetService("Players").LocalPlayer.Character:GetChildren()) do
-                if v:IsA("BasePart") then
-                    v:Destroy()
-                end
-            end
-        end
-    end)
-end
+            task.wait(getgenv().Auto
