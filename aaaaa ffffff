@@ -23,7 +23,6 @@ local fpsVar = 60
 RunService.Heartbeat:Connect(function(dt)
     fpsVar = math.floor(1 / dt)
 end)
-setfpscap(getgenv().AutofarmSettings.Main.Fps)
 
 -- Visual optimization classes
 local visualClasses = {
@@ -42,26 +41,37 @@ local function DescendantOfIgnore(obj)
     return false
 end
 
--- Remove visual objects (optimized with pcall)
+-- Remove visual objects (optimized with pcall, silently ignore errors)
 local function RemoveVisualObjects()
     pcall(function()
         local count = 0
         for _, obj in pairs(Workspace:GetDescendants()) do
             if not DescendantOfIgnore(obj) then
-                -- Skip BULLET_RAYS and gun effects to avoid warnings
-                if obj.Parent and obj.Parent.Name == "BULLET_RAYS" then
-                    continue
+                -- Skip ALL descendants of BULLET_RAYS and MoneyDrop to avoid warnings
+                local parent = obj.Parent
+                while parent do
+                    if parent.Name == "BULLET_RAYS" or parent.Name == "MoneyDrop" then
+                        goto continue
+                    end
+                    parent = parent.Parent
                 end
                 
                 for _, class in ipairs(visualClasses) do
                     if obj:IsA(class) then
-                        obj:Destroy()
+                        -- Silently destroy without printing warnings
+                        pcall(function() 
+                            if obj and obj.Parent then
+                                obj:Destroy() 
+                            end
+                        end)
                         count = count + 1
                         if count % 50 == 0 then
                             task.wait() -- Yield occasionally to prevent lag spikes
                         end
                     end
                 end
+                
+                ::continue::
             end
         end
         
@@ -69,14 +79,22 @@ local function RemoveVisualObjects()
             for _, child in pairs(Workspace.Terrain:GetChildren()) do
                 for _, class in ipairs(visualClasses) do
                     if child:IsA(class) then
-                        child:Destroy()
+                        pcall(function() 
+                            if child and child.Parent then
+                                child:Destroy() 
+                            end
+                        end)
                     end
                 end
             end
         end
         
         for _, obj in pairs(Lighting:GetChildren()) do
-            obj:Destroy()
+            pcall(function() 
+                if obj and obj.Parent then
+                    obj:Destroy() 
+                end
+            end)
         end
     end)
 end
@@ -198,6 +216,15 @@ local function MonitorNewObjects()
     Workspace.DescendantAdded:Connect(function(obj)
         pcall(function()
             if not DescendantOfIgnore(obj) then
+                -- Skip ALL descendants of BULLET_RAYS and MoneyDrop
+                local parent = obj.Parent
+                while parent do
+                    if parent.Name == "BULLET_RAYS" or parent.Name == "MoneyDrop" then
+                        return
+                    end
+                    parent = parent.Parent
+                end
+                
                 for _, class in ipairs(visualClasses) do
                     if obj:IsA(class) then
                         obj:Destroy()
@@ -576,6 +603,24 @@ local function buyItem(pos, isAmmo)
     end
 end
 
+-- Get current ammo count
+local function getAmmoCount()
+    local tool = getAUGTool()
+    if tool then
+        local ammo = tool:FindFirstChild("Ammo")
+        if ammo and ammo:IsA("IntValue") then
+            return ammo.Value
+        end
+    end
+    return 0
+end
+
+-- Check if needs ammo refill
+local function needsAmmo()
+    local currentAmmo = getAmmoCount()
+    return currentAmmo < 100 -- Refill when below 100 bullets
+end
+
 -- Auto buy AUG and ammo
 local function autoBuy()
     if not hasAUG() then
@@ -583,6 +628,7 @@ local function autoBuy()
         task.wait(3)
     end
     buyItem(ammoBuyPos, true)
+    print("[Prime DHC Auto Farm] Bought ammo")
 end
 
 autoBuy()
@@ -746,7 +792,18 @@ end)
 local function sendWebhook()
     if not getgenv().AutofarmSettings.Webhook.Webhook or getgenv().AutofarmSettings.Webhook.Webhook == "" then 
         warn("[Prime DHC Auto Farm] No webhook URL configured")
-        return 
+        return false
+    end
+    
+    -- Safety check: ensure all data is available
+    if not Player or not Player.DataFolder or not Player.DataFolder:FindFirstChild("Currency") then
+        warn("[Prime DHC Auto Farm] Player data not ready for webhook")
+        return false
+    end
+    
+    if not startCash or not startTime then
+        warn("[Prime DHC Auto Farm] Start values not initialized")
+        return false
     end
     
     local success, err = pcall(function()
@@ -815,7 +872,7 @@ local function sendWebhook()
         
         local jsonData = HttpService:JSONEncode(data)
         
-        -- Try using request function (works better in some executors)
+        -- Use request function (Seliware supports this)
         local req = http_request or request or syn.request or fluxus.request
         if req then
             local response = req({
@@ -826,7 +883,8 @@ local function sendWebhook()
                 },
                 Body = jsonData
             })
-            print("[Prime DHC Auto Farm] Webhook sent via request function - Status:", response.StatusCode)
+            print("[Prime DHC Auto Farm] Webhook sent via request - Status:", response.StatusCode or "Unknown")
+            return true
         else
             -- Fallback to HttpService
             local response = HttpService:PostAsync(
@@ -836,13 +894,13 @@ local function sendWebhook()
                 false
             )
             print("[Prime DHC Auto Farm] Webhook sent via HttpService")
+            return true
         end
-        
-        return true
     end)
     
     if not success then
-        warn("[Prime DHC Auto Farm] Webhook error:", err)
+        warn("[Prime DHC Auto Farm] Webhook error:", tostring(err))
+        return false
     end
     
     return success
@@ -924,6 +982,13 @@ end)
 task.spawn(function()
     while true do
         pcall(function()
+            -- Check ammo before farming
+            if needsAmmo() then
+                print("[Prime DHC Auto Farm] Low on ammo, buying more...")
+                autoBuy()
+                task.wait(2)
+            end
+            
             local foundTarget = false
             local cashiersFolder = Workspace:FindFirstChild("Cashiers")
             
