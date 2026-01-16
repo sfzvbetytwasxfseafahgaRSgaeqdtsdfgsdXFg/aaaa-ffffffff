@@ -1,9 +1,8 @@
-if not getgenv().Data or not getgenv().Data.authenticated then
+if not getgenv().Data or not getgenv().Data .authenticated then
     game:GetService("Players").LocalPlayer:Kick("Run the loader first")
     return
 end
 
--- Services
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local VirtualUser = game:GetService("VirtualUser")
@@ -14,24 +13,18 @@ local HttpService = game:GetService("HttpService")
 local TeleportService = game:GetService("TeleportService")
 local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Lighting = game:GetService("Lighting")
-local MaterialService = game:GetService("MaterialService")
 local Player = Players.LocalPlayer
-
--- FPS Tracking
 local fpsVar = 60
 RunService.Heartbeat:Connect(function(dt)
     fpsVar = math.floor(1 / dt)
 end)
 setfpscap(getgenv().AutofarmSettings.Main.Fps)
-
--- Visual optimization classes
+local Lighting = game:GetService("Lighting")
+local MaterialService = game:GetService("MaterialService")
 local visualClasses = {
     "Decal", "Texture", "ParticleEmitter", "Smoke", "Fire", "Sparkles", "Trail", "Beam",
     "PostEffect", "Sky", "Atmosphere", "SunRaysEffect", "Light", "ColorCorrectionEffect"
 }
-
--- Helper function to check if object should be ignored
 local function DescendantOfIgnore(obj)
     local ignoreInstances = {Workspace:FindFirstChild("Map"), Workspace:FindFirstChild("CurrentMap")}
     for _, ignore in pairs(ignoreInstances) do
@@ -41,206 +34,155 @@ local function DescendantOfIgnore(obj)
     end
     return false
 end
-
--- Remove visual objects (optimized with pcall)
 local function RemoveVisualObjects()
-    pcall(function()
-        local count = 0
-        for _, obj in pairs(Workspace:GetDescendants()) do
-            if not DescendantOfIgnore(obj) then
-                for _, class in ipairs(visualClasses) do
-                    if obj:IsA(class) then
-                        obj:Destroy()
-                        count = count + 1
-                        if count % 50 == 0 then
-                            task.wait() -- Yield occasionally to prevent lag spikes
-                        end
-                    end
+    local count = 0
+    for _, obj in pairs(Workspace:GetDescendants()) do
+        if not DescendantOfIgnore(obj) then
+            for _, class in ipairs(visualClasses) do
+                if obj:IsA(class) then
+                    obj:Destroy()
+                    count = count + 1
                 end
             end
         end
-        
-        if Workspace.Terrain then
-            for _, child in pairs(Workspace.Terrain:GetChildren()) do
-                for _, class in ipairs(visualClasses) do
-                    if child:IsA(class) then
-                        child:Destroy()
-                    end
+    end
+    if Workspace.Terrain then
+        for _, child in pairs(Workspace.Terrain:GetChildren()) do
+            for _, class in ipairs(visualClasses) do
+                if child:IsA(class) then
+                    child:Destroy()
+                    count = count + 1
                 end
             end
         end
-        
-        for _, obj in pairs(Lighting:GetChildren()) do
-            obj:Destroy()
-        end
-    end)
+    end
+    for _, obj in pairs(Lighting:GetChildren()) do
+        obj:Destroy()
+        count = count + 1
+    end
 end
-
--- Disable shadows
 local function DisableShadows()
-    pcall(function()
-        for _, obj in pairs(Workspace:GetDescendants()) do
-            if obj:IsA("BasePart") and not DescendantOfIgnore(obj) then
-                obj.CastShadow = false
-            end
+    for _, obj in pairs(Workspace:GetDescendants()) do
+        if obj:IsA("BasePart") and not DescendantOfIgnore(obj) then
+            obj.CastShadow = false
         end
-    end)
+    end
 end
-
--- Potatofy parts for performance
 local function PotatofyParts()
-    pcall(function()
-        local partCount = 0
-        for _, obj in pairs(Workspace:GetDescendants()) do
-            if not DescendantOfIgnore(obj) then
-                if obj:IsA("MeshPart") or obj:IsA("Part") then
-                    pcall(function() obj.Material = Enum.Material.Plastic end)
-                    pcall(function() obj.Reflectance = 0 end)
-                    pcall(function() obj.Color = Color3.new(0.5, 0.5, 0.5) end)
-                    if obj:IsA("MeshPart") then
-                        pcall(function() obj.TextureID = "" end)
-                        pcall(function() obj.MeshId = "" end)
-                        -- Skip RenderFidelity as it cannot be changed at runtime
-                    end
-                    partCount = partCount + 1
-                    if partCount % 100 == 0 then
-                        task.wait() -- Yield to prevent lag
-                    end
-                elseif obj:IsA("SpecialMesh") or obj:IsA("BlockMesh") or obj:IsA("FileMesh") then
-                    pcall(function() obj:Destroy() end)
+    local partCount = 0
+    for _, obj in pairs(Workspace:GetDescendants()) do
+        if not DescendantOfIgnore(obj) then
+            if obj:IsA("MeshPart") or obj:IsA("Part") then
+                obj.Material = Enum.Material.Plastic
+                obj.Reflectance = 0
+                obj.Color = Color3.new(0.5, 0.5, 0.5)
+                if obj:IsA("MeshPart") then
+                    obj.TextureID = ""
+                    obj.MeshId = ""
+                    obj.RenderFidelity = Enum.RenderFidelity.Automatic
                 end
+                partCount = partCount + 1
+            elseif obj:IsA("SpecialMesh") or obj:IsA("BlockMesh") or obj:IsA("FileMesh") then
+                obj:Destroy()
             end
         end
-        
-        for _, v in pairs(MaterialService:GetChildren()) do
-            pcall(function() v:Destroy() end)
-        end
-        pcall(function() MaterialService.Use2022Materials = false end)
-    end)
+    end
+    for _, v in pairs(MaterialService:GetChildren()) do
+        v:Destroy()
+    end
+    MaterialService.Use2022Materials = false
 end
-
--- Optimize rendering settings
 local function OptimizeRendering()
+    Lighting.GlobalShadows = false
+    Lighting.FogEnd = 100000
+    Lighting.FogStart = 0
+    Lighting.Brightness = 0.5
+    Lighting.Ambient = Color3.new(0.5, 0.5, 0.5)
+    Lighting.OutdoorAmbient = Color3.new(0.5, 0.5, 0.5)
+    Lighting.ShadowSoftness = 0
+    Lighting.ClockTime = 12
     pcall(function()
-        Lighting.GlobalShadows = false
-        Lighting.FogEnd = 100000
-        Lighting.FogStart = 0
-        Lighting.Brightness = 0.5
-        Lighting.Ambient = Color3.new(0.5, 0.5, 0.5)
-        Lighting.OutdoorAmbient = Color3.new(0.5, 0.5, 0.5)
-        Lighting.ShadowSoftness = 0
-        Lighting.ClockTime = 12
-        
+        sethiddenproperty(Lighting, "Technology", Enum.Technology.Compatibility)
+    end)
+    if settings().Rendering then
+        settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
+        settings().Rendering.EnableParticles = false
+    end
+    if Workspace.Terrain then
+        Workspace.Terrain.WaterWaveSize = 0
+        Workspace.Terrain.WaterWaveSpeed = 0
+        Workspace.Terrain.WaterReflectance = 0
+        Workspace.Terrain.WaterTransparency = 0
         pcall(function()
-            sethiddenproperty(Lighting, "Technology", Enum.Technology.Compatibility)
+            sethiddenproperty(Workspace.Terrain, "Decoration", false)
         end)
-        
-        if settings().Rendering then
-            settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
-            settings().Rendering.EnableParticles = false
+    end
+    pcall(function()
+        Workspace.StreamingMinRadius = 64
+        Workspace.StreamingTargetRadius = 128
+    end)
+    pcall(function()
+        Workspace.CurrentCamera.FieldOfView = 120
+    end)
+    pcall(function()
+        if setfpscap then
+            setfpscap(1e6)
         end
-        
-        if Workspace.Terrain then
-            Workspace.Terrain.WaterWaveSize = 0
-            Workspace.Terrain.WaterWaveSpeed = 0
-            Workspace.Terrain.WaterReflectance = 0
-            Workspace.Terrain.WaterTransparency = 0
-            pcall(function()
-                sethiddenproperty(Workspace.Terrain, "Decoration", false)
-            end)
+    end)
+    pcall(function()
+        if getnilinstances then
+            for _, v in pairs(getnilinstances()) do
+                v:Destroy()
+            end
         end
-        
-        pcall(function()
-            Workspace.StreamingMinRadius = 64
-            Workspace.StreamingTargetRadius = 128
-        end)
-        
-        pcall(function()
-            Workspace.CurrentCamera.FieldOfView = 120
-        end)
-        
-        pcall(function()
-            if setfpscap then
-                setfpscap(1e6)
-            end
-        end)
-        
-        pcall(function()
-            if getnilinstances then
-                for _, v in pairs(getnilinstances()) do
-                    v:Destroy()
-                end
-            end
-        end)
-        
-        for _, player in pairs(Players:GetPlayers()) do
-            if player ~= Players.LocalPlayer then
-                local character = player.Character
-                if character then
-                    for _, anim in pairs(character:GetDescendants()) do
-                        if anim:IsA("Animation") or anim:IsA("AnimationTrack") then
-                            anim:Destroy()
-                        end
+    end)
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= Players.LocalPlayer then
+            local character = player.Character
+            if character then
+                for _, anim in pairs(character:GetDescendants()) do
+                    if anim:IsA("Animation") or anim:IsA("AnimationTrack") then
+                        anim:Destroy()
                     end
                 end
             end
         end
-    end)
+    end
 end
-
--- Monitor new objects (optimized)
 local function MonitorNewObjects()
     Workspace.DescendantAdded:Connect(function(obj)
-        pcall(function()
-            if not DescendantOfIgnore(obj) then
-                for _, class in ipairs(visualClasses) do
-                    if obj:IsA(class) then
-                        obj:Destroy()
-                        return
-                    end
-                end
-                
-                if obj:IsA("BasePart") then
-                    obj.CastShadow = false
-                    obj.Material = Enum.Material.Plastic
-                    obj.Reflectance = 0
-                    obj.Color = Color3.new(0.5, 0.5, 0.5)
-                elseif obj:IsA("SpecialMesh") or obj:IsA("BlockMesh") or obj:IsA("FileMesh") then
+        if not DescendantOfIgnore(obj) then
+            for _, class in ipairs(visualClasses) do
+                if obj:IsA(class) then
                     obj:Destroy()
                 end
             end
-        end)
+            if obj:IsA("BasePart") then
+                obj.CastShadow = false
+                obj.Material = Enum.Material.Plastic
+                obj.Reflectance = 0
+                obj.Color = Color3.new(0.5, 0.5, 0.5)
+            elseif obj:IsA("SpecialMesh") or obj:IsA("BlockMesh") or obj:IsA("FileMesh") then
+                obj:Destroy()
+            end
+        end
     end)
-    
     Lighting.ChildAdded:Connect(function(obj)
-        pcall(function()
-            obj:Destroy()
-        end)
+        obj:Destroy()
     end)
 end
-
--- FIXED: Optimized heartbeat loop with proper timing
-local lastCleanupTime = tick()
 local function InitAntiLag()
     RemoveVisualObjects()
     DisableShadows()
     PotatofyParts()
     OptimizeRendering()
     MonitorNewObjects()
-    
-    -- FIXED: More efficient heartbeat loop
     RunService.Heartbeat:Connect(function()
-        local currentTime = tick()
-        if currentTime - lastCleanupTime >= 30 then
-            lastCleanupTime = currentTime
-            pcall(function()
-                RemoveVisualObjects()
-                DisableShadows()
-                PotatofyParts()
-            end)
+        if tick() % 30 < 0.1 then
+            RemoveVisualObjects()
+            DisableShadows()
+            PotatofyParts()
         end
-        
-        -- Quick settings check every frame
         pcall(function()
             sethiddenproperty(Lighting, "Technology", Enum.Technology.Compatibility)
             if settings().Rendering then
@@ -251,24 +193,16 @@ local function InitAntiLag()
         end)
     end)
 end
-
 local success, err = pcall(InitAntiLag)
 if not success then
-    warn("[Prime DHC Auto Farm] AntiLag initialization failed:", err)
 end
-
--- Variables
 local startTime
 local startCash
-
--- Format money helper
 local function formatMoney(amount)
     local formatted = tostring(math.floor(amount)):reverse():gsub("(%d%d%d)", "%1,")
     formatted = formatted:reverse():gsub("^,", ""):gsub(",$", "")
     return "$" .. formatted
 end
-
--- Setup GUI
 local function setupGUI()
     local screenGui = Instance.new("ScreenGui")
     screenGui.Name = "PrimeFarm"
@@ -276,7 +210,6 @@ local function setupGUI()
     screenGui.IgnoreGuiInset = true
     screenGui.Parent = Player:WaitForChild("PlayerGui")
     _G.farmGui = screenGui
-    
     local blackScreen = Instance.new("Frame")
     blackScreen.Name = "BlackScreen"
     blackScreen.Size = UDim2.new(1, 0, 1, 0)
@@ -284,7 +217,6 @@ local function setupGUI()
     blackScreen.BorderSizePixel = 0
     blackScreen.ZIndex = 0
     blackScreen.Parent = screenGui
-    
     local frame = Instance.new("Frame")
     frame.Name = "MainFrame"
     frame.Size = UDim2.new(0, 320, 0, 280)
@@ -293,7 +225,6 @@ local function setupGUI()
     frame.BorderSizePixel = 0
     frame.ZIndex = 10
     frame.Parent = screenGui
-    
     local gradient = Instance.new("UIGradient")
     gradient.Color = ColorSequence.new({
         ColorSequenceKeypoint.new(0, Color3.fromRGB(20, 30, 50)),
@@ -302,16 +233,13 @@ local function setupGUI()
     })
     gradient.Rotation = 45
     gradient.Parent = frame
-    
     local stroke = Instance.new("UIStroke")
     stroke.Color = Color3.fromRGB(0, 255, 255)
     stroke.Thickness = 2
     stroke.Parent = frame
-    
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(0, 12)
     corner.Parent = frame
-    
     local header = Instance.new("Frame")
     header.Name = "Header"
     header.Size = UDim2.new(1, 0, 0, 60)
@@ -320,15 +248,12 @@ local function setupGUI()
     header.BackgroundTransparency = 0.9
     header.ZIndex = 11
     header.Parent = frame
-    
     local headerCorner = Instance.new("UICorner")
     headerCorner.CornerRadius = UDim.new(0, 12)
     headerCorner.Parent = header
-    
     local headerPadding = Instance.new("UIPadding")
     headerPadding.PaddingTop = UDim.new(0, 12)
     headerPadding.Parent = header
-    
     local title = Instance.new("TextLabel")
     title.Name = "Title"
     title.Size = UDim2.new(1, 0, 0, 22)
@@ -341,7 +266,6 @@ local function setupGUI()
     title.TextXAlignment = Enum.TextXAlignment.Center
     title.ZIndex = 12
     title.Parent = header
-    
     local subtitle = Instance.new("TextLabel")
     subtitle.Name = "Subtitle"
     subtitle.Size = UDim2.new(1, 0, 0, 15)
@@ -354,7 +278,6 @@ local function setupGUI()
     subtitle.TextXAlignment = Enum.TextXAlignment.Center
     subtitle.ZIndex = 12
     subtitle.Parent = header
-    
     local statsContainer = Instance.new("Frame")
     statsContainer.Name = "StatsContainer"
     statsContainer.Size = UDim2.new(1, -20, 1, -70)
@@ -362,7 +285,6 @@ local function setupGUI()
     statsContainer.BackgroundTransparency = 1
     statsContainer.ZIndex = 11
     statsContainer.Parent = frame
-    
     local function createStatLabel(yPos, name, initialText)
         local label = Instance.new("TextLabel")
         label.Name = name
@@ -378,21 +300,16 @@ local function setupGUI()
         label.Parent = statsContainer
         return label
     end
-    
     createStatLabel(0, "UserLabel", "User: Loading...")
     createStatLabel(35, "FPSLabel", "FPS: Loading...")
     createStatLabel(70, "TimeLabel", "Time Running: Loading...")
     createStatLabel(105, "StartCashLabel", "Start Cash: Loading...")
     createStatLabel(140, "CurrentCashLabel", "Current Cash: Loading...")
     createStatLabel(175, "ProfitLabel", "Total Profit: Loading...")
-    
     return screenGui, blackScreen
 end
-
 local gui, blackScreen = setupGUI()
 local isBlackScreenEnabled = true
-
--- Toggle black screen with comma key
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
     if input.KeyCode == Enum.KeyCode.Comma then
@@ -400,82 +317,63 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
         blackScreen.Visible = isBlackScreenEnabled
     end
 end)
-
--- Update GUI function
 local function updateGUI()
-    pcall(function()
-        if not gui or not gui:FindFirstChild("MainFrame") or not gui.MainFrame:FindFirstChild("StatsContainer") then return end
-        
-        local elapsed = tick() - startTime
-        local hours = math.floor(elapsed / 3600)
-        local minutes = math.floor((elapsed % 3600) / 60)
-        local seconds = math.floor(elapsed % 60)
-        local timeString = string.format("%02d:%02d:%02d", hours, minutes, seconds)
-        
-        local currentCash = Player.DataFolder.Currency.Value
-        local profit = currentCash - startCash
-        
-        gui.MainFrame.StatsContainer.FPSLabel.Text = "FPS: " .. tostring(fpsVar)
-        gui.MainFrame.StatsContainer.FPSLabel.TextColor3 = Color3.fromRGB(0, 255, 255)
-        gui.MainFrame.StatsContainer.UserLabel.Text = "User: " .. Player.Name
-        gui.MainFrame.StatsContainer.UserLabel.TextColor3 = Color3.fromRGB(0, 255, 255)
-        gui.MainFrame.StatsContainer.TimeLabel.Text = "Time Running: " .. timeString
-        gui.MainFrame.StatsContainer.StartCashLabel.Text = "Start Cash: " .. formatMoney(startCash)
-        gui.MainFrame.StatsContainer.CurrentCashLabel.Text = "Current Cash: " .. formatMoney(currentCash)
-        
-        local profitLabel = gui.MainFrame.StatsContainer.ProfitLabel
-        profitLabel.Text = "Total Profit: " .. formatMoney(profit)
-        profitLabel.TextColor3 = (profit >= 0) and Color3.fromRGB(0, 255, 255) or Color3.fromRGB(255, 80, 80)
-    end)
+    if not gui or not gui:FindFirstChild("MainFrame") or not gui.MainFrame:FindFirstChild("StatsContainer") then return end
+    local elapsed = tick() - startTime
+    local hours = math.floor(elapsed / 3600)
+    local minutes = math.floor((elapsed % 3600) / 60)
+    local seconds = math.floor(elapsed % 60)
+    local timeString = string.format("%02d:%02d:%02d", hours, minutes, seconds)
+    local currentCash = Player.DataFolder.Currency.Value
+    local profit = currentCash - startCash
+    gui.MainFrame.StatsContainer.FPSLabel.Text = "FPS: " .. tostring(fpsVar)
+    gui.MainFrame.StatsContainer.FPSLabel.TextColor3 = Color3.fromRGB(0, 255, 255)
+    gui.MainFrame.StatsContainer.UserLabel.Text = "User: " .. Player.Name
+    gui.MainFrame.StatsContainer.UserLabel.TextColor3 = Color3.fromRGB(0, 255, 255)
+    gui.MainFrame.StatsContainer.TimeLabel.Text = "Time Running: " .. timeString
+    gui.MainFrame.StatsContainer.StartCashLabel.Text = "Start Cash: " .. formatMoney(startCash)
+    gui.MainFrame.StatsContainer.CurrentCashLabel.Text = "Current Cash: " .. formatMoney(currentCash)
+    local profitLabel = gui.MainFrame.StatsContainer.ProfitLabel
+    profitLabel.Text = "Total Profit: " .. formatMoney(profit)
+    profitLabel.TextColor3 = (profit >= 0) and Color3.fromRGB(0, 255, 255) or Color3.fromRGB(255, 80, 80)
 end
-
--- Wait for game to load
 if not Player.Character then
     Player.CharacterAdded:Wait()
 end
-
 repeat task.wait() until game:IsLoaded()
 repeat task.wait() until Player.Character
 repeat task.wait() until Player.Character:FindFirstChild("HumanoidRootPart")
 repeat task.wait() until Player:FindFirstChild("DataFolder")
 repeat task.wait() until Player.DataFolder:FindFirstChild("Currency")
-
--- Settings
 getgenv().MaxAttackTime = 10
 getgenv().CollectRange = 50
 getgenv().CollectTime = 5
 getgenv().SpawnWait = 1.5
 getgenv().ReloadThreshold = 3
-
--- Initialize values
 startTime = tick()
 startCash = Player.DataFolder.Currency.Value
-
-pcall(updateGUI)
-
--- GUI update loop
+local ok, err = pcall(updateGUI)
+if not ok then
+end
 task.spawn(function()
     while true do
-        pcall(updateGUI)
+        local ok, err = pcall(updateGUI)
+        if not ok then
+        end
         task.wait(1)
     end
 end)
-
--- Random delay helper
 local function randomDelay(min, max)
     min = min or getgenv().AutofarmSettings.Main.Delay
     max = max or min + 0.2
     task.wait(math.random(min * 100, max * 100) / 100)
 end
-
--- Check if player has AUG
 local function hasAUG()
     local containers = {Player.Backpack}
     local char = Player.Character
     if char then
         table.insert(containers, char)
     end
-    
     for _, container in pairs(containers) do
         for _, tool in pairs(container:GetChildren()) do
             if tool:IsA("Tool") and string.lower(tool.Name):find("aug") then
@@ -485,37 +383,27 @@ local function hasAUG()
     end
     return false
 end
-
--- Get AUG tool
 local function getAUGTool()
     local char = Player.Character
     if not char then return nil end
-    
     for _, tool in pairs(char:GetChildren()) do
         if tool:IsA("Tool") and string.lower(tool.Name):find("aug") then
             return tool
         end
     end
-    
     for _, tool in pairs(Player.Backpack:GetChildren()) do
         if tool:IsA("Tool") and string.lower(tool.Name):find("aug") then
             return tool
         end
     end
-    
     return nil
 end
-
--- Shop positions
 local augBuyPos = Vector3.new(-273.0153041799, 52.2666088321, -216.104867764)
 local ammoBuyPos = Vector3.new(-277.8882854219, 52.3626088321, -217.0169677738)
-
--- Find shop item
 local function findShopItem(pos, isAmmo)
     local shop = workspace:WaitForChild("Ignored"):WaitForChild("Shop")
     local minDist = math.huge
     local bestCD, bestHead, bestName = nil, nil, ""
-    
     for _, item in pairs(shop:GetChildren()) do
         local nameLower = string.lower(item.Name)
         if nameLower:find("aug") and (isAmmo == (nameLower:find("ammo") ~= nil)) then
@@ -532,21 +420,16 @@ local function findShopItem(pos, isAmmo)
             end
         end
     end
-    
     return bestCD, bestHead, minDist, bestName
 end
-
--- Buy item from shop
 local function buyItem(pos, isAmmo)
     local char = Player.Character
     if not char then return false end
-    
     local hrp = char:WaitForChild("HumanoidRootPart")
     hrp.CFrame = CFrame.new(pos)
     hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
     hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
     task.wait(0.5)
-    
     local cd, head, dist, name = findShopItem(pos, isAmmo)
     if cd and head then
         if isAmmo then
@@ -562,8 +445,6 @@ local function buyItem(pos, isAmmo)
         return false
     end
 end
-
--- Auto buy AUG and ammo
 local function autoBuy()
     if not hasAUG() then
         buyItem(augBuyPos, false)
@@ -571,10 +452,7 @@ local function autoBuy()
     end
     buyItem(ammoBuyPos, true)
 end
-
 autoBuy()
-
--- Collect money function
 local function collectMoney(moneyPart)
     if moneyPart and moneyPart.Parent then
         local cd = moneyPart:FindFirstChild("ClickDetector")
@@ -583,40 +461,28 @@ local function collectMoney(moneyPart)
         end
     end
 end
-
--- FIXED: Proper hook management to prevent memory leaks
-local currentMouseHook = nil
-
--- FIXED: Rob target with proper connection cleanup
 local function robTarget(targetModel, openPart)
     local char = Player.Character
     if not char or not char.Parent then return end
-    
     local hrp = char.HumanoidRootPart
     local hum = char.Humanoid
     local targetHead = targetModel:FindFirstChild("Head")
     if not targetHead then return end
-    
     local aimPosition = targetHead.Position - Vector3.new(0, 3, 0)
     local tpPos = openPart.Position - openPart.CFrame.LookVector * 4
-    
     hrp.CFrame = CFrame.lookAt(tpPos, aimPosition)
     hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
     randomDelay(0.3, 0.5)
-    
     local tool = getAUGTool()
     if not tool then
         return
     end
-    
     if tool.Parent ~= char then
         hum:EquipTool(tool)
         task.wait(0.6)
     end
-    
-    -- FIXED: Restore old hook before creating new one
-    local oldHook = currentMouseHook
-    currentMouseHook = hookmetamethod(game, "__index", function(t, k)
+    local __index
+    __index = hookmetamethod(game, "__index", function(t, k)
         if t:IsA("Mouse") and (k == "Hit" or k == "Target") then
             if k == "Hit" then
                 return CFrame.new(aimPosition)
@@ -624,112 +490,70 @@ local function robTarget(targetModel, openPart)
                 return targetHead
             end
         end
-        return oldHook and oldHook(t, k) or t[k]
+        return __index(t, k)
     end)
-    
     local shootStart = tick()
     local shootConn
-    local connectionActive = true
-    
-    -- FIXED: Wrapped in pcall and ensures cleanup
-    local success = pcall(function()
-        shootConn = RunService.RenderStepped:Connect(function()
-            if not connectionActive or (tick() - shootStart) > getgenv().MaxAttackTime or targetModel.Humanoid.Health <= 0 then
-                if shootConn then
-                    shootConn:Disconnect()
-                    shootConn = nil
-                end
-                connectionActive = false
-                return
+    shootConn = RunService.RenderStepped:Connect(function()
+        if (tick() - shootStart) > getgenv().MaxAttackTime or targetModel.Humanoid.Health <= 0 then
+            shootConn:Disconnect()
+            return
+        end
+        if UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter then
+            hrp.CFrame = CFrame.lookAt(hrp.Position, aimPosition)
+        end
+        local equipped = char:FindFirstChildOfClass("Tool")
+        if equipped and string.lower(equipped.Name):find("aug") then
+            equipped:Activate()
+            task.wait(0.05)
+            equipped:Activate()
+        else
+            tool = getAUGTool()
+            if tool then
+                hum:EquipTool(tool)
+                task.wait(0.4)
             end
-            
-            if UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter then
-                hrp.CFrame = CFrame.lookAt(hrp.Position, aimPosition)
-            end
-            
-            local equipped = char:FindFirstChildOfClass("Tool")
-            if equipped and string.lower(equipped.Name):find("aug") then
-                equipped:Activate()
-                task.wait(0.05)
-                equipped:Activate()
-            else
-                tool = getAUGTool()
-                if tool then
-                    hum:EquipTool(tool)
-                    task.wait(0.4)
-                end
-            end
-        end)
-        
-        while targetModel.Humanoid.Health > 0 and (tick() - shootStart) < getgenv().MaxAttackTime and connectionActive do
-            task.wait(0.1)
         end
     end)
-    
-    -- FIXED: Always cleanup connections
-    connectionActive = false
-    if shootConn then
-        shootConn:Disconnect()
-        shootConn = nil
+    while targetModel.Humanoid.Health > 0 and (tick() - shootStart) < getgenv().MaxAttackTime do
+        task.wait(0.1)
     end
-    
-    -- FIXED: Restore hook properly
-    if currentMouseHook then
-        hookmetamethod(game, "__index", oldHook or function(t, k) return t[k] end)
-        currentMouseHook = oldHook
-    end
-    
+    shootConn:Disconnect()
+    hookmetamethod(game, "__index", __index)
     randomDelay(getgenv().SpawnWait, getgenv().SpawnWait + 0.3)
-    
-    -- FIXED: Better cash collection with safety checks
-    local targetPos = targetModel.PrimaryPart and targetModel.PrimaryPart.Position or 
-                     (targetModel:FindFirstChild("HumanoidRootPart") and targetModel.HumanoidRootPart.Position) or 
-                     openPart.Position
-    
+    local vacuumStart = tick()
+    local targetPos = targetModel.PrimaryPart and targetModel.PrimaryPart.Position or (targetModel:FindFirstChild("HumanoidRootPart") and targetModel.HumanoidRootPart.Position) or openPart.Position
     hrp.CFrame = CFrame.new(targetPos + Vector3.new(0, 3, 0))
     hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-    
-    local vacuumStart = tick()
-    local cashCollected = 0
-    
     while (tick() - vacuumStart) < getgenv().CollectTime do
         local dropsFolder = Workspace:FindFirstChild("Ignored")
-        if not dropsFolder then break end
-        
-        local dropFolder = dropsFolder:FindFirstChild("Drop")
-        if not dropFolder then break end
-        
         local foundCash = false
-        for _, cashPart in pairs(dropFolder:GetChildren()) do
-            if (tick() - vacuumStart) >= getgenv().CollectTime then break end
-            
-            if cashPart:IsA("Part") and cashPart.Name == "MoneyDrop" then
-                local dist = (cashPart.Position - targetPos).Magnitude
-                if dist <= getgenv().CollectRange then
-                    foundCash = true
-                    collectMoney(cashPart)
-                    cashCollected = cashCollected + 1
-                    randomDelay(0.1, 0.2)
+        if dropsFolder then
+            local dropFolder = dropsFolder:FindFirstChild("Drop")
+            if dropFolder then
+                for _, cashPart in pairs(dropFolder:GetChildren()) do
+                    if cashPart:IsA("Part") and cashPart.Name == "MoneyDrop" then
+                        local dist = (cashPart.Position - targetPos).Magnitude
+                        if dist <= getgenv().CollectRange then
+                            foundCash = true
+                            collectMoney(cashPart)
+                            randomDelay(0.1, 0.2)
+                        end
+                    end
                 end
             end
         end
-        
         if not foundCash then
             randomDelay(0.2, 0.4)
         end
     end
-    
     hrp.CFrame = CFrame.new(9999, 50, 9999)
 end
-
--- Server hop function
 local function performHop()
     if _G.farmGui then _G.farmGui:Destroy() end
-    
     local placeId = game.PlaceId
     local jobId = game.JobId
     local url = "https://games.roblox.com/v1/games/" .. placeId .. "/servers/Public?sortOrder=Asc&sortBy=Active&limit=100"
-    
     local success, result = pcall(HttpService.RequestAsync, HttpService, {Url = url, Method = "GET"})
     if success and result.Body then
         local data = HttpService:JSONDecode(result.Body)
@@ -746,8 +570,6 @@ local function performHop()
         TeleportService:Teleport(placeId)
     end
 end
-
--- Server hop loop
 task.spawn(function()
     while true do
         if getgenv().AutofarmSettings.ServerHop.Enabled then
@@ -758,17 +580,13 @@ task.spawn(function()
         end
     end
 end)
-
--- Webhook function
 local function sendWebhook()
     if getgenv().AutofarmSettings.Webhook.Webhook == "" then return end
-    
     local currentCash = Player.DataFolder.Currency.Value
     local profit = currentCash - startCash
     local elapsed = tick() - startTime
     local hours = math.floor(elapsed / 3600)
     local minutes = math.floor((elapsed % 3600) / 60)
-    
     local data = {
         ["username"] = "Prime Farm Logger",
         ["embeds"] = {{
@@ -782,13 +600,10 @@ local function sendWebhook()
             }
         }}
     }
-    
     pcall(function()
         HttpService:PostAsync(getgenv().AutofarmSettings.Webhook.Webhook, HttpService:JSONEncode(data), Enum.HttpContentType.ApplicationJson)
     end)
 end
-
--- Webhook loop
 task.spawn(function()
     while true do
         if getgenv().AutofarmSettings.Webhook.Webhook ~= "" then
@@ -797,15 +612,11 @@ task.spawn(function()
         task.wait(getgenv().AutofarmSettings.Webhook.Interval)
     end
 end)
-
--- Auto reload
 local MainEvent = ReplicatedStorage:WaitForChild("MainEvent")
-
 local function getEquippedTool()
     local char = Player.Character
     return char and char:FindFirstChildOfClass("Tool")
 end
-
 local function needsReload(tool)
     if not tool then return false end
     local ammo = tool:FindFirstChild("Ammo")
@@ -814,7 +625,6 @@ local function needsReload(tool)
     end
     return true
 end
-
 local function doReload()
     local tool = getEquippedTool()
     if tool and needsReload(tool) and MainEvent.Parent then
@@ -823,37 +633,30 @@ local function doReload()
     end
     return false
 end
-
--- Auto reload loop
 task.spawn(function()
     while true do
-        pcall(doReload)
+        doReload()
         task.wait(0.12 + math.random(0, 8)/100)
     end
 end)
-
--- Anti-idle
 Player.Idled:Connect(function()
     VirtualUser:CaptureController()
     VirtualUser:ClickButton2(Vector2.new())
 end)
-
--- Character respawn handler
 Player.CharacterAdded:Connect(function(newChar)
     local hrp = newChar:WaitForChild("HumanoidRootPart")
     autoBuy()
     startTime = tick()
     startCash = Player.DataFolder.Currency.Value
-    pcall(updateGUI)
+    local ok, err = pcall(updateGUI)
+    if not ok then
+    end
 end)
-
--- Main farming loop
 task.spawn(function()
     while true do
         pcall(function()
             local foundTarget = false
             local cashiersFolder = Workspace:FindFirstChild("Cashiers")
-            
             if cashiersFolder then
                 for _, cashierModel in pairs(cashiersFolder:GetChildren()) do
                     local humanoid = cashierModel:FindFirstChild("Humanoid")
@@ -862,7 +665,6 @@ task.spawn(function()
                         if openPart then
                             foundTarget = true
                             robTarget(cashierModel, openPart)
-                            
                             local speed = getgenv().AutofarmSettings.Main.Speed
                             local minDelay = 0.5 / speed
                             local maxDelay = minDelay + 0.2
@@ -871,7 +673,6 @@ task.spawn(function()
                     end
                 end
             end
-            
             if not foundTarget then
                 randomDelay(5, 7)
             end
@@ -880,7 +681,6 @@ task.spawn(function()
     end
 end)
 
--- Auto-respawn on knockout
 while wait() do
     pcall(function()
         if game:GetService("Players").LocalPlayer.Character:FindFirstChild("BodyEffects"):FindFirstChild("K.O").Value == true then
