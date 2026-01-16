@@ -48,11 +48,6 @@ local function RemoveVisualObjects()
         local count = 0
         for _, obj in pairs(Workspace:GetDescendants()) do
             if not DescendantOfIgnore(obj) then
-                -- Skip BULLET_RAYS and gun effects to avoid warnings
-                if obj.Parent and obj.Parent.Name == "BULLET_RAYS" then
-                    continue
-                end
-                
                 for _, class in ipairs(visualClasses) do
                     if obj:IsA(class) then
                         obj:Destroy()
@@ -105,6 +100,7 @@ local function PotatofyParts()
                     if obj:IsA("MeshPart") then
                         pcall(function() obj.TextureID = "" end)
                         pcall(function() obj.MeshId = "" end)
+                        -- Skip RenderFidelity as it cannot be changed at runtime
                     end
                     partCount = partCount + 1
                     if partCount % 100 == 0 then
@@ -223,9 +219,16 @@ local function MonitorNewObjects()
     end)
 end
 
--- Optimized heartbeat loop with proper timing
+-- FIXED: Optimized heartbeat loop with proper timing
 local lastCleanupTime = tick()
 local function InitAntiLag()
+    RemoveVisualObjects()
+    DisableShadows()
+    PotatofyParts()
+    OptimizeRendering()
+    MonitorNewObjects()
+    
+    -- FIXED: More efficient heartbeat loop
     RunService.Heartbeat:Connect(function()
         local currentTime = tick()
         if currentTime - lastCleanupTime >= 30 then
@@ -237,6 +240,7 @@ local function InitAntiLag()
             end)
         end
         
+        -- Quick settings check every frame
         pcall(function()
             sethiddenproperty(Lighting, "Technology", Enum.Technology.Compatibility)
             if settings().Rendering then
@@ -252,18 +256,6 @@ local success, err = pcall(InitAntiLag)
 if not success then
     warn("[Prime DHC Auto Farm] AntiLag initialization failed:", err)
 end
-
-task.spawn(function()
-    task.wait(2)
-    pcall(OptimizeRendering)
-    pcall(MonitorNewObjects)
-    task.wait(1)
-    pcall(RemoveVisualObjects)
-    task.wait(1)
-    pcall(DisableShadows)
-    task.wait(1)
-    pcall(PotatofyParts)
-end)
 
 -- Variables
 local startTime
@@ -454,7 +446,6 @@ getgenv().CollectRange = 50
 getgenv().CollectTime = 5
 getgenv().SpawnWait = 1.5
 getgenv().ReloadThreshold = 3
-getgenv().AmmoLowThreshold = 100 -- Buy ammo when below this
 
 -- Initialize values
 startTime = tick()
@@ -515,18 +506,6 @@ local function getAUGTool()
     return nil
 end
 
--- NEW: Get total ammo reserves
-local function getTotalAmmo()
-    local tool = getAUGTool()
-    if tool then
-        local ammo = tool:FindFirstChild("Ammo")
-        if ammo and ammo:IsA("IntValue") then
-            return ammo.Value
-        end
-    end
-    return 0
-end
-
 -- Shop positions
 local augBuyPos = Vector3.new(-273.0153041799, 52.2666088321, -216.104867764)
 local ammoBuyPos = Vector3.new(-277.8882854219, 52.3626088321, -217.0169677738)
@@ -558,9 +537,7 @@ local function findShopItem(pos, isAmmo)
 end
 
 -- Buy item from shop
-local function buyItem(pos, isAmmo, buyCount)
-    buyCount = buyCount or (isAmmo and 10 or 1)
-    
+local function buyItem(pos, isAmmo)
     local char = Player.Character
     if not char then return false end
     
@@ -573,15 +550,10 @@ local function buyItem(pos, isAmmo, buyCount)
     local cd, head, dist, name = findShopItem(pos, isAmmo)
     if cd and head then
         if isAmmo then
-            -- Buy ammo multiple times based on buyCount
-            for i = 1, buyCount do
-                for j = 1, 10 do
-                    fireclickdetector(cd)
-                    task.wait(0.035)
-                end
-                task.wait(0.1)
+            for i = 1, 100 do
+                fireclickdetector(cd)
+                task.wait(0.035)
             end
-            print("[Prime DHC Auto Farm] Bought ammo " .. buyCount .. " times. Total ammo:", getTotalAmmo())
         else
             fireclickdetector(cd)
         end
@@ -591,38 +563,16 @@ local function buyItem(pos, isAmmo, buyCount)
     end
 end
 
--- NEW: Initial setup - buy AUG and 10x ammo
-local function initialSetup()
-    print("[Prime DHC Auto Farm] Starting initial setup...")
-    
+-- Auto buy AUG and ammo
+local function autoBuy()
     if not hasAUG() then
-        print("[Prime DHC Auto Farm] Buying AUG...")
         buyItem(augBuyPos, false)
         task.wait(3)
     end
-    
-    print("[Prime DHC Auto Farm] Buying ammo 10 times for initial reserves...")
-    buyItem(ammoBuyPos, true, 10)
-    task.wait(2)
-    
-    print("[Prime DHC Auto Farm] Initial setup complete. Total ammo:", getTotalAmmo())
+    buyItem(ammoBuyPos, true)
 end
 
--- NEW: Refill ammo when low (buy 10 more times)
-local function refillAmmo()
-    local currentAmmo = getTotalAmmo()
-    if currentAmmo < getgenv().AmmoLowThreshold then
-        print("[Prime DHC Auto Farm] Ammo low (" .. currentAmmo .. "). Refilling with 10 purchases...")
-        buyItem(ammoBuyPos, true, 10)
-        task.wait(2)
-        print("[Prime DHC Auto Farm] Ammo refilled. New total:", getTotalAmmo())
-        return true
-    end
-    return false
-end
-
--- Run initial setup
-initialSetup()
+autoBuy()
 
 -- Collect money function
 local function collectMoney(moneyPart)
@@ -634,13 +584,13 @@ local function collectMoney(moneyPart)
     end
 end
 
--- Rob target with working hook system
+-- FIXED: Proper hook management to prevent memory leaks
+local currentMouseHook = nil
+
+-- FIXED: Rob target with proper connection cleanup
 local function robTarget(targetModel, openPart)
     local char = Player.Character
     if not char or not char.Parent then return end
-    
-    -- NEW: Check and refill ammo before engaging
-    refillAmmo()
     
     local hrp = char.HumanoidRootPart
     local hum = char.Humanoid
@@ -664,8 +614,9 @@ local function robTarget(targetModel, openPart)
         task.wait(0.6)
     end
     
-    local __index
-    __index = hookmetamethod(game, "__index", function(t, k)
+    -- FIXED: Restore old hook before creating new one
+    local oldHook = currentMouseHook
+    currentMouseHook = hookmetamethod(game, "__index", function(t, k)
         if t:IsA("Mouse") and (k == "Hit" or k == "Target") then
             if k == "Hit" then
                 return CFrame.new(aimPosition)
@@ -673,69 +624,96 @@ local function robTarget(targetModel, openPart)
                 return targetHead
             end
         end
-        return __index(t, k)
+        return oldHook and oldHook(t, k) or t[k]
     end)
     
     local shootStart = tick()
     local shootConn
-    shootConn = RunService.RenderStepped:Connect(function()
-        if (tick() - shootStart) > getgenv().MaxAttackTime or targetModel.Humanoid.Health <= 0 then
-            if shootConn then
-                shootConn:Disconnect()
+    local connectionActive = true
+    
+    -- FIXED: Wrapped in pcall and ensures cleanup
+    local success = pcall(function()
+        shootConn = RunService.RenderStepped:Connect(function()
+            if not connectionActive or (tick() - shootStart) > getgenv().MaxAttackTime or targetModel.Humanoid.Health <= 0 then
+                if shootConn then
+                    shootConn:Disconnect()
+                    shootConn = nil
+                end
+                connectionActive = false
+                return
             end
-            return
-        end
-        if UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter then
-            hrp.CFrame = CFrame.lookAt(hrp.Position, aimPosition)
-        end
-        local equipped = char:FindFirstChildOfClass("Tool")
-        if equipped and string.lower(equipped.Name):find("aug") then
-            equipped:Activate()
-            task.wait(0.05)
-            equipped:Activate()
-        else
-            tool = getAUGTool()
-            if tool then
-                hum:EquipTool(tool)
-                task.wait(0.4)
+            
+            if UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter then
+                hrp.CFrame = CFrame.lookAt(hrp.Position, aimPosition)
             end
+            
+            local equipped = char:FindFirstChildOfClass("Tool")
+            if equipped and string.lower(equipped.Name):find("aug") then
+                equipped:Activate()
+                task.wait(0.05)
+                equipped:Activate()
+            else
+                tool = getAUGTool()
+                if tool then
+                    hum:EquipTool(tool)
+                    task.wait(0.4)
+                end
+            end
+        end)
+        
+        while targetModel.Humanoid.Health > 0 and (tick() - shootStart) < getgenv().MaxAttackTime and connectionActive do
+            task.wait(0.1)
         end
     end)
     
-    while targetModel.Humanoid.Health > 0 and (tick() - shootStart) < getgenv().MaxAttackTime do
-        task.wait(0.1)
-    end
-    
+    -- FIXED: Always cleanup connections
+    connectionActive = false
     if shootConn then
         shootConn:Disconnect()
+        shootConn = nil
     end
-    hookmetamethod(game, "__index", __index)
+    
+    -- FIXED: Restore hook properly
+    if currentMouseHook then
+        hookmetamethod(game, "__index", oldHook or function(t, k) return t[k] end)
+        currentMouseHook = oldHook
+    end
     
     randomDelay(getgenv().SpawnWait, getgenv().SpawnWait + 0.3)
     
-    local targetPos = targetModel.PrimaryPart and targetModel.PrimaryPart.Position or (targetModel:FindFirstChild("HumanoidRootPart") and targetModel.HumanoidRootPart.Position) or openPart.Position
+    -- FIXED: Better cash collection with safety checks
+    local targetPos = targetModel.PrimaryPart and targetModel.PrimaryPart.Position or 
+                     (targetModel:FindFirstChild("HumanoidRootPart") and targetModel.HumanoidRootPart.Position) or 
+                     openPart.Position
+    
     hrp.CFrame = CFrame.new(targetPos + Vector3.new(0, 3, 0))
     hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
     
     local vacuumStart = tick()
+    local cashCollected = 0
+    
     while (tick() - vacuumStart) < getgenv().CollectTime do
         local dropsFolder = Workspace:FindFirstChild("Ignored")
+        if not dropsFolder then break end
+        
+        local dropFolder = dropsFolder:FindFirstChild("Drop")
+        if not dropFolder then break end
+        
         local foundCash = false
-        if dropsFolder then
-            local dropFolder = dropsFolder:FindFirstChild("Drop")
-            if dropFolder then
-                for _, cashPart in pairs(dropFolder:GetChildren()) do
-                    if cashPart:IsA("Part") and cashPart.Name == "MoneyDrop" then
-                        local dist = (cashPart.Position - targetPos).Magnitude
-                        if dist <= getgenv().CollectRange then
-                            foundCash = true
-                            collectMoney(cashPart)
-                            randomDelay(0.1, 0.2)
-                        end
-                    end
+        for _, cashPart in pairs(dropFolder:GetChildren()) do
+            if (tick() - vacuumStart) >= getgenv().CollectTime then break end
+            
+            if cashPart:IsA("Part") and cashPart.Name == "MoneyDrop" then
+                local dist = (cashPart.Position - targetPos).Magnitude
+                if dist <= getgenv().CollectRange then
+                    foundCash = true
+                    collectMoney(cashPart)
+                    cashCollected = cashCollected + 1
+                    randomDelay(0.1, 0.2)
                 end
             end
         end
+        
         if not foundCash then
             randomDelay(0.2, 0.4)
         end
@@ -773,4 +751,144 @@ end
 task.spawn(function()
     while true do
         if getgenv().AutofarmSettings.ServerHop.Enabled then
-            task.wait(getgenv().Auto
+            task.wait(getgenv().AutofarmSettings.ServerHop.Interval * 60)
+            pcall(performHop)
+        else
+            task.wait(10)
+        end
+    end
+end)
+
+-- Webhook function
+local function sendWebhook()
+    if getgenv().AutofarmSettings.Webhook.Webhook == "" then return end
+    
+    local currentCash = Player.DataFolder.Currency.Value
+    local profit = currentCash - startCash
+    local elapsed = tick() - startTime
+    local hours = math.floor(elapsed / 3600)
+    local minutes = math.floor((elapsed % 3600) / 60)
+    
+    local data = {
+        ["username"] = "Prime Farm Logger",
+        ["embeds"] = {{
+            ["title"] = "Farm Update: " .. Player.Name,
+            ["description"] = "Running for " .. hours .. "h " .. minutes .. "m",
+            ["color"] = 1752220,
+            ["fields"] = {
+                {name = "Current Cash", value = formatMoney(currentCash), inline = true},
+                {name = "Total Profit", value = formatMoney(profit), inline = true},
+                {name = "FPS", value = tostring(fpsVar), inline = true}
+            }
+        }}
+    }
+    
+    pcall(function()
+        HttpService:PostAsync(getgenv().AutofarmSettings.Webhook.Webhook, HttpService:JSONEncode(data), Enum.HttpContentType.ApplicationJson)
+    end)
+end
+
+-- Webhook loop
+task.spawn(function()
+    while true do
+        if getgenv().AutofarmSettings.Webhook.Webhook ~= "" then
+            pcall(sendWebhook)
+        end
+        task.wait(getgenv().AutofarmSettings.Webhook.Interval)
+    end
+end)
+
+-- Auto reload
+local MainEvent = ReplicatedStorage:WaitForChild("MainEvent")
+
+local function getEquippedTool()
+    local char = Player.Character
+    return char and char:FindFirstChildOfClass("Tool")
+end
+
+local function needsReload(tool)
+    if not tool then return false end
+    local ammo = tool:FindFirstChild("Ammo")
+    if ammo and ammo:IsA("IntValue") then
+        return ammo.Value <= getgenv().ReloadThreshold
+    end
+    return true
+end
+
+local function doReload()
+    local tool = getEquippedTool()
+    if tool and needsReload(tool) and MainEvent.Parent then
+        MainEvent:FireServer("Reload", tool)
+        return true
+    end
+    return false
+end
+
+-- Auto reload loop
+task.spawn(function()
+    while true do
+        pcall(doReload)
+        task.wait(0.12 + math.random(0, 8)/100)
+    end
+end)
+
+-- Anti-idle
+Player.Idled:Connect(function()
+    VirtualUser:CaptureController()
+    VirtualUser:ClickButton2(Vector2.new())
+end)
+
+-- Character respawn handler
+Player.CharacterAdded:Connect(function(newChar)
+    local hrp = newChar:WaitForChild("HumanoidRootPart")
+    autoBuy()
+    startTime = tick()
+    startCash = Player.DataFolder.Currency.Value
+    pcall(updateGUI)
+end)
+
+-- Main farming loop
+task.spawn(function()
+    while true do
+        pcall(function()
+            local foundTarget = false
+            local cashiersFolder = Workspace:FindFirstChild("Cashiers")
+            
+            if cashiersFolder then
+                for _, cashierModel in pairs(cashiersFolder:GetChildren()) do
+                    local humanoid = cashierModel:FindFirstChild("Humanoid")
+                    if humanoid and humanoid.Health > 0 then
+                        local openPart = cashierModel:FindFirstChild("Open")
+                        if openPart then
+                            foundTarget = true
+                            robTarget(cashierModel, openPart)
+                            
+                            local speed = getgenv().AutofarmSettings.Main.Speed
+                            local minDelay = 0.5 / speed
+                            local maxDelay = minDelay + 0.2
+                            randomDelay(minDelay, maxDelay)
+                        end
+                    end
+                end
+            end
+            
+            if not foundTarget then
+                randomDelay(5, 7)
+            end
+        end)
+        task.wait(1)
+    end
+end)
+
+-- Auto-respawn on knockout
+while wait() do
+    pcall(function()
+        if game:GetService("Players").LocalPlayer.Character:FindFirstChild("BodyEffects"):FindFirstChild("K.O").Value == true then
+            for i, v in pairs(game:GetService("Players").LocalPlayer.Character:GetChildren()) do
+                if v:IsA("BasePart") then
+                    v:Destroy()
+                end
+            end
+        end
+    end)
+end
