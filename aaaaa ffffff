@@ -452,15 +452,21 @@ local function autoBuy()
     end
     buyItem(ammoBuyPos, true)
 end
--- Initial buy and setup
+-- Initial buy
 autoBuy()
-task.wait(1)
+task.wait(1.5)
 local char = Player.Character
 if char then
-    local tool = getAUGTool()
+    local hrp = char:FindFirstChild("HumanoidRootPart")
     local hum = char:FindFirstChild("Humanoid")
-    if tool and hum and tool.Parent ~= char then
-        hum:EquipTool(tool)
+    if hrp and hum then
+        local tool = getAUGTool()
+        if tool and tool.Parent ~= char then
+            hum:EquipTool(tool)
+            task.wait(0.4)
+        end
+        hrp.CFrame = CFrame.new(9999, 50, 9999)
+        hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
     end
 end
 -- ===== MONEY COLLECTION =====
