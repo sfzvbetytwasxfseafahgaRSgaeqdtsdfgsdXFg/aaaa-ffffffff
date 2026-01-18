@@ -52,16 +52,43 @@ _G.fireclickdetector = _fireclickdetector
 
 print("[Prime DHC] Compatibility layer loaded!")
 
--- ===== SILENT AIM SYSTEM =====
-print("[Prime DHC] Initializing silent aim...")
+-- ===== ORIGINAL SILENT AIM SYSTEM (RESTORED) =====
+print("[Prime DHC] Initializing original silent aim...")
 
 local silentAimEnabled = false
 local currentTarget = nil
-local Mouse = Player:GetMouse()
+local MainEvent = ReplicatedStorage:WaitForChild("MainEvent")
 
--- Hook mouse position for silent aim
-local oldIndex
-oldIndex = hookmetamethod(game, "__index", function(self, key)
+-- Original hookmetamethod approach
+local mt = getrawmetatable(game)
+setreadonly(mt, false)
+
+local oldNamecall = mt.__namecall
+local oldIndex = mt.__index
+
+mt.__namecall = newcclosure(function(self, ...)
+    local args = {...}
+    local method = getnamecallmethod()
+    
+    if method == "FireServer" and self == MainEvent then
+        if silentAimEnabled and currentTarget then
+            local action = args[1]
+            
+            -- Hook the UpdateMousePos event
+            if action == "UpdateMousePos" then
+                local targetHead = currentTarget:FindFirstChild("Head")
+                if targetHead then
+                    -- Replace mouse position with target head
+                    args[2] = targetHead.Position
+                end
+            end
+        end
+    end
+    
+    return oldNamecall(self, unpack(args))
+end)
+
+mt.__index = newcclosure(function(self, key)
     if silentAimEnabled and currentTarget then
         if key == "Hit" then
             local targetHead = currentTarget:FindFirstChild("Head")
@@ -70,10 +97,13 @@ oldIndex = hookmetamethod(game, "__index", function(self, key)
             end
         end
     end
+    
     return oldIndex(self, key)
 end)
 
-print("[Prime DHC] Silent aim initialized!")
+setreadonly(mt, true)
+
+print("[Prime DHC] Original silent aim initialized!")
 
 -- ===== SERVICES =====
 local Players = game:GetService("Players")
