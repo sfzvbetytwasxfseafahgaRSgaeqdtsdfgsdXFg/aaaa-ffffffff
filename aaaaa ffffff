@@ -9,7 +9,6 @@ print("[Prime DHC] Loading robust compatibility layer...")
 local fireclickdetector_func = function(detector, distance)
     distance = distance or 0
     if not detector then return end
-    -- Primary: Connection firing
     pcall(function()
         if getconnections then
             for _, conn in pairs(getconnections(detector.MouseClick)) do
@@ -19,15 +18,12 @@ local fireclickdetector_func = function(detector, distance)
             end
         end
     end)
-    -- Fallback 1: Direct
     pcall(function() detector.MouseClick:Fire() end)
-    -- Fallback 2: Virtual input
     pcall(function()
         detector:InputBegan(Enum.UserInputType.MouseButton1)
         task.wait(0.01)
         detector:InputEnded(Enum.UserInputType.MouseButton1)
     end)
-    -- Ultimate fallback: Teleport click
     pcall(function()
         local player = game:GetService("Players").LocalPlayer
         local char = player.Character
@@ -84,7 +80,6 @@ mt.__index = newcclosure(function(self, key)
 end)
 
 setreadonly(mt, true)
-
 print("[Prime DHC] Silent aim loaded (root part targeting)")
 
 -- ===== FPS TRACKING =====
@@ -99,7 +94,7 @@ pcall(function()
     end
 end)
 
--- ===== OPTIMIZATION FUNCTIONS ===== (unchanged)
+-- ===== OPTIMIZATION FUNCTIONS =====
 local visualClasses = {
     "Decal", "Texture", "ParticleEmitter", "Smoke", "Fire", "Sparkles",
     "Trail", "Beam", "PostEffect", "Sky", "Atmosphere", "SunRaysEffect",
@@ -181,6 +176,14 @@ task.spawn(function()
     pcall(OptimizeRendering)
     task.wait(1)
     pcall(RemoveVisualObjects)
+end)
+
+-- ===== HIDE DA HOOD FRAMEWORK PARTICLE ERROR SPAM =====
+game:GetService("LogService").MessageOut:Connect(function(msg, typ)
+    if typ == Enum.MessageType.MessageWarning and 
+       (msg:find("ItemDropParticle") or msg:find("attempt to index nil with 'FindFirstChild'")) then
+        return -- silently ignore
+    end
 end)
 
 -- ===== VARIABLES =====
@@ -480,7 +483,7 @@ local function autoBuy()
     buyItem(ammoBuyPos, true)
 end
 
--- Initial buy & kickstart
+-- Initial buy & kickstart (teleport away from shop so farm starts properly)
 autoBuy()
 task.wait(1.5)
 local char = Player.Character
@@ -555,7 +558,7 @@ local function robTarget(targetModel, openPart)
     SilentAimPart = targetRoot
     SilentAimVelocity = targetRoot.Velocity
 
-    -- Shoot target with live prediction update
+    -- Shoot target with live prediction
     local shootStart = tick()
     local shootConn
 
@@ -571,7 +574,6 @@ local function robTarget(targetModel, openPart)
                 return
             end
 
-            -- Update velocity every frame for better prediction
             if targetRoot then
                 SilentAimVelocity = targetRoot.Velocity
             end
@@ -630,6 +632,7 @@ local function robTarget(targetModel, openPart)
         end
         task.wait(0.1)
     end
+    -- NO VOID TELEPORT HERE — removed to stop death loop
 end
 
 -- ===== AUTO RELOAD =====
