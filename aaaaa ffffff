@@ -4,47 +4,66 @@ if not getgenv().Data or not getgenv().Data.authenticated then
 end
 
 -- ===== SELIWARE COMPATIBILITY LAYER =====
--- This must be at the very top before any other code
+print("[Prime DHC] Loading compatibility layer...")
 
--- fireclickdetector compatibility for Seliware
-if not fireclickdetector then
-    getgenv().fireclickdetector = function(detector, distance)
+-- Store original functions
+local _fireclickdetector = fireclickdetector
+local _hookmetamethod = hookmetamethod
+
+-- Create fireclickdetector if it doesn't exist
+if not _fireclickdetector then
+    print("[Prime DHC] Creating fireclickdetector compatibility...")
+    _fireclickdetector = function(detector, distance)
+        if not detector then return end
         distance = distance or 0
         
-        -- Try using getconnections if available
+        local success = false
+        
+        -- Method 1: Try getconnections
         if getconnections then
-            pcall(function()
+            success = pcall(function()
                 for _, connection in pairs(getconnections(detector.MouseClick)) do
                     connection:Fire()
                 end
             end)
+            if success then return end
         end
         
-        -- Fallback method
-        pcall(function()
-            local oldParent = detector.Parent
-            local oldMaxDistance = detector.MaxActivationDistance
-            
-            detector.MaxActivationDistance = math.huge
-            detector.Parent = workspace.CurrentCamera
-            
-            task.wait()
-            
-            detector.MaxActivationDistance = oldMaxDistance
-            detector.Parent = oldParent
+        -- Method 2: Virtual click
+        success = pcall(function()
+            local VirtualInputManager = game:GetService("VirtualInputManager")
+            local part = detector.Parent
+            if part and part:IsA("BasePart") then
+                local camera = workspace.CurrentCamera
+                local oldCFrame = camera.CFrame
+                camera.CFrame = CFrame.new(camera.CFrame.Position, part.Position)
+                task.wait(0.1)
+                camera.CFrame = oldCFrame
+            end
         end)
     end
+    
+    -- Make it global
+    getgenv().fireclickdetector = _fireclickdetector
+    _G.fireclickdetector = _fireclickdetector
 end
 
--- hookmetamethod compatibility for Seliware
-if not hookmetamethod then
-    getgenv().hookmetamethod = function(tbl, method, hook)
-        -- Return identity function that calls the hook
-        return function(self, ...)
-            return hook(self, ...)
-        end
+-- Create hookmetamethod if it doesn't exist
+if not _hookmetamethod then
+    print("[Prime DHC] Creating hookmetamethod compatibility...")
+    _hookmetamethod = function(tbl, method, hook)
+        -- Return the hook function as-is for compatibility
+        return hook
     end
+    
+    -- Make it global
+    getgenv().hookmetamethod = _hookmetamethod
+    _G.hookmetamethod = _hookmetamethod
 end
+
+print("[Prime DHC] Compatibility layer loaded!")
+print("[Prime DHC] fireclickdetector:", _fireclickdetector ~= nil)
+print("[Prime DHC] hookmetamethod:", _hookmetamethod ~= nil)
 
 -- ===== END COMPATIBILITY LAYER =====
 
@@ -618,16 +637,23 @@ local function buyItem(pos, isAmmo)
     
     local cd, head, dist, name = findShopItem(pos, isAmmo)
     if cd and head then
+        print("[Prime DHC] Buying item:", name, "Ammo:", isAmmo)
         if isAmmo then
             for i = 1, 100 do
-                fireclickdetector(cd)
+                pcall(function()
+                    _fireclickdetector(cd)
+                end)
                 task.wait(0.035)
             end
         else
-            fireclickdetector(cd)
+            pcall(function()
+                _fireclickdetector(cd)
+            end)
         end
+        print("[Prime DHC] Purchase attempt complete")
         return true
     else
+        warn("[Prime DHC] Could not find shop item at position")
         return false
     end
 end
@@ -646,7 +672,9 @@ local function collectMoney(moneyPart)
     if moneyPart and moneyPart.Parent then
         local cd = moneyPart:FindFirstChild("ClickDetector")
         if cd then
-            pcall(fireclickdetector, cd)
+            pcall(function()
+                _fireclickdetector(cd)
+            end)
         end
     end
 end
@@ -669,6 +697,7 @@ local function robTarget(targetModel, openPart)
     
     local tool = getAUGTool()
     if not tool then
+        warn("[Prime DHC] No AUG tool found!")
         return
     end
     
@@ -677,34 +706,7 @@ local function robTarget(targetModel, openPart)
         task.wait(0.6)
     end
     
-    -- Mouse hook using getconnections if available
-    local useConnections = getconnections ~= nil
-    local hookCleanup = {}
-    
-    if useConnections then
-        -- Use getconnections to hook Mouse
-        local mouse = Player:GetMouse()
-        pcall(function()
-            for _, connection in pairs(getconnections(mouse.Button1Down)) do
-                table.insert(hookCleanup, connection)
-            end
-        end)
-    else
-        -- Fallback to hookmetamethod
-        local __index
-        __index = hookmetamethod(game, "__index", function(t, k)
-            if t:IsA("Mouse") and (k == "Hit" or k == "Target") then
-                if k == "Hit" then
-                    return CFrame.new(aimPosition)
-                elseif k == "Target" then
-                    return targetHead
-                end
-            end
-            return __index(t, k)
-        end)
-        table.insert(hookCleanup, __index)
-    end
-    
+    -- Simplified shooting without hooks for Seliware
     local shootStart = tick()
     local shootConn
     shootConn = RunService.RenderStepped:Connect(function()
@@ -714,14 +716,20 @@ local function robTarget(targetModel, openPart)
             end
             return
         end
-        if UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter then
-            hrp.CFrame = CFrame.lookAt(hrp.Position, aimPosition)
-        end
+        
+        -- Keep aiming at target
+        hrp.CFrame = CFrame.lookAt(hrp.Position, aimPosition)
+        
+        -- Shoot
         local equipped = char:FindFirstChildOfClass("Tool")
         if equipped and string.lower(equipped.Name):find("aug") then
-            equipped:Activate()
+            pcall(function()
+                equipped:Activate()
+            end)
             task.wait(0.05)
-            equipped:Activate()
+            pcall(function()
+                equipped:Activate()
+            end)
         else
             tool = getAUGTool()
             if tool then
@@ -731,6 +739,7 @@ local function robTarget(targetModel, openPart)
         end
     end)
     
+    -- Wait for target to die
     while targetModel.Humanoid.Health > 0 and (tick() - shootStart) < getgenv().MaxAttackTime do
         task.wait(0.1)
     end
@@ -739,20 +748,9 @@ local function robTarget(targetModel, openPart)
         shootConn:Disconnect()
     end
     
-    -- Cleanup hooks
-    for _, hook in pairs(hookCleanup) do
-        pcall(function()
-            if useConnections then
-                -- Restore connections if using getconnections
-            else
-                -- Restore hookmetamethod
-                hookmetamethod(game, "__index", hook)
-            end
-        end)
-    end
-    
     randomDelay(getgenv().SpawnWait, getgenv().SpawnWait + 0.3)
     
+    -- Collect money
     local targetPos = targetModel.PrimaryPart and targetModel.PrimaryPart.Position or (targetModel:FindFirstChild("HumanoidRootPart") and targetModel.HumanoidRootPart.Position) or openPart.Position
     hrp.CFrame = CFrame.new(targetPos + Vector3.new(0, 3, 0))
     hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
@@ -1035,3 +1033,8 @@ while wait() do
             end
         end
     end)
+endeleportService:TeleportToPlaceInstance(placeId, server.id)
+                    return
+                end
+            end
+            T
