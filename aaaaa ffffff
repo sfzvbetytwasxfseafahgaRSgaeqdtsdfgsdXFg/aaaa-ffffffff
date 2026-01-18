@@ -1,54 +1,797 @@
--- Collect money from a safe distance
-    local targetPos = targetModel.PrimaryPart and targetModel.PrimaryPart.Position
-        or (targetModel:FindFirstChild("HumanoidRootPart") and targetModel.HumanoidRootPart.Position)
-        or openPart.Position
+print("[Prime DHC] Starting auto farm...")
+if not getgenv().Data or not getgenv().Data.authenticated then
+    game:GetService("Players").LocalPlayer:Kick("Run the loader first")
+    return
+end
+-- ===== SELIWARE COMPATIBILITY LAYER =====
+print("[Prime DHC] Loading compatibility layer...")
+-- Store original functions with better fallbacks
+local _fireclickdetector = fireclickdetector or function(detector, distance)
+    if not detector then return end
+    distance = distance or 0
    
-    -- Calculate average position of all money drops first
-    local dropsFolder = Workspace:FindFirstChild("Ignored")
-    local cashPositions = {}
-    
-    if dropsFolder then
-        local dropFolder = dropsFolder:FindFirstChild("Drop")
-        if dropFolder then
-            for _, cashPart in pairs(dropFolder:GetChildren()) do
-                if cashPart:IsA("Part") and cashPart.Name == "MoneyDrop" then
-                    local dist = (cashPart.Position - targetPos).Magnitude
-                    if dist <= getgenv().CollectRange then
-                        table.insert(cashPositions, cashPart.Position)
+    -- Try multiple methods
+    local success = pcall(function()
+        -- Method 1: Direct connection firing
+        if getconnections then
+            for _, connection in pairs(getconnections(detector.MouseClick)) do
+                pcall(function() connection:Fire() end)
+            end
+            return
+        end
+       
+        -- Method 2: Simulate mouse click event
+        detector.MouseClick:Fire()
+    end)
+   
+    if not success then
+        -- Method 3: Virtual input as last resort
+        pcall(function()
+            local part = detector.Parent
+            if part and part:IsA("BasePart") then
+                local player = game:GetService("Players").LocalPlayer
+                local char = player.Character
+                if char and char:FindFirstChild("HumanoidRootPart") then
+                    local oldCFrame = char.HumanoidRootPart.CFrame
+                    char.HumanoidRootPart.CFrame = CFrame.new(part.Position)
+                    task.wait(0.05)
+                    char.HumanoidRootPart.CFrame = oldCFrame
+                end
+            end
+        end)
+    end
+end
+-- Make functions global for compatibility
+getgenv().fireclickdetector = _fireclickdetector
+_G.fireclickdetector = _fireclickdetector
+print("[Prime DHC] Compatibility layer loaded!")
+-- ===== SERVICES =====
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local VirtualUser = game:GetService("VirtualUser")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = workspace
+local HttpService = game:GetService("HttpService")
+local TeleportService = game:GetService("TeleportService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Lighting = game:GetService("Lighting")
+local MaterialService = game:GetService("MaterialService")
+local Player = Players.LocalPlayer
+-- ===== SILENT AIM SETUP =====
+local SilentAimPart = nil
+local SilentAimVelocity = Vector3.new(0,0,0)
+local Prediction = 0.165
+if hookmetamethod then
+    local oldIndex = nil
+    oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, key)
+        if self:IsA("Mouse") and (key == "Hit" or key == "Target") and SilentAimPart then
+            local predicted = SilentAimPart.CFrame + (SilentAimVelocity * Prediction)
+            return (key == "Hit" and predicted or SilentAimPart)
+        end
+        return oldIndex(self, key)
+    end))
+else
+    warn("[Prime DHC] hookmetamethod not supported, silent aim may not work!")
+end
+-- ===== FPS TRACKING =====
+local fpsVar = 60
+RunService.Heartbeat:Connect(function(dt)
+    fpsVar = math.floor(1 / dt)
+end)
+-- Set FPS cap
+pcall(function()
+    if setfpscap then
+        setfpscap(getgenv().AutofarmSettings.Main.Fps)
+    end
+end)
+-- ===== OPTIMIZATION FUNCTIONS =====
+local visualClasses = {
+    "Decal", "Texture", "ParticleEmitter", "Smoke", "Fire", "Sparkles",
+    "Trail", "Beam", "PostEffect", "Sky", "Atmosphere", "SunRaysEffect",
+    "Light", "ColorCorrectionEffect"
+}
+local function DescendantOfIgnore(obj)
+    local parent = obj.Parent
+    while parent do
+        if parent.Name == "Map" or parent.Name == "CurrentMap" or
+           parent.Name == "BULLET_RAYS" or parent.Name == "MoneyDrop" then
+            return true
+        end
+        parent = parent.Parent
+    end
+    return false
+end
+local function RemoveVisualObjects()
+    pcall(function()
+        local count = 0
+        for _, obj in pairs(Workspace:GetDescendants()) do
+            if not DescendantOfIgnore(obj) then
+                for _, class in ipairs(visualClasses) do
+                    if obj:IsA(class) then
+                        pcall(function() obj:Destroy() end)
+                        count = count + 1
+                        if count % 50 == 0 then task.wait() end
+                        break
                     end
                 end
             end
         end
-    end
-    
-    -- Calculate center point of all cash drops
-    local collectPos = targetPos
-    if #cashPositions > 0 then
-        local sumPos = Vector3.new(0, 0, 0)
-        for _, pos in pairs(cashPositions) do
-            sumPos = sumPos + pos
+       
+        for _, obj in pairs(Lighting:GetChildren()) do
+            pcall(function() obj:Destroy() end)
         end
-        collectPos = sumPos / #cashPositions
+    end)
+end
+local function OptimizeRendering()
+    pcall(function()
+        Lighting.GlobalShadows = false
+        Lighting.FogEnd = 100000
+        Lighting.Brightness = 0.5
+       
+        if Workspace.Terrain then
+            Workspace.Terrain.WaterWaveSize = 0
+            Workspace.Terrain.WaterWaveSpeed = 0
+            Workspace.Terrain.WaterReflectance = 0
+        end
+       
+        for _, obj in pairs(Workspace:GetDescendants()) do
+            if not DescendantOfIgnore(obj) and obj:IsA("BasePart") then
+                obj.CastShadow = false
+                obj.Material = Enum.Material.Plastic
+                obj.Reflectance = 0
+            end
+        end
+    end)
+end
+-- Monitor new objects
+Workspace.DescendantAdded:Connect(function(obj)
+    pcall(function()
+        if not DescendantOfIgnore(obj) then
+            for _, class in ipairs(visualClasses) do
+                if obj:IsA(class) then
+                    obj:Destroy()
+                    return
+                end
+            end
+           
+            if obj:IsA("BasePart") then
+                obj.CastShadow = false
+                obj.Material = Enum.Material.Plastic
+                obj.Reflectance = 0
+            end
+        end
+    end)
+end)
+-- Run optimizations
+task.spawn(function()
+    task.wait(2)
+    pcall(OptimizeRendering)
+    task.wait(1)
+    pcall(RemoveVisualObjects)
+end)
+-- ===== VARIABLES =====
+local startTime
+local startCash
+local function formatMoney(amount)
+    local formatted = tostring(math.floor(amount)):reverse():gsub("(%d%d%d)", "%1,")
+    formatted = formatted:reverse():gsub("^,", ""):gsub(",$", "")
+    return "$" .. formatted
+end
+-- ===== GUI SETUP =====
+local function setupGUI()
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "PrimeFarm"
+    screenGui.ResetOnSpawn = false
+    screenGui.IgnoreGuiInset = true
+    screenGui.Parent = Player:WaitForChild("PlayerGui")
+    _G.farmGui = screenGui
+   
+    local blackScreen = Instance.new("Frame")
+    blackScreen.Name = "BlackScreen"
+    blackScreen.Size = UDim2.new(1, 0, 1, 0)
+    blackScreen.BackgroundColor3 = Color3.new(0, 0, 0)
+    blackScreen.BorderSizePixel = 0
+    blackScreen.ZIndex = 0
+    blackScreen.Parent = screenGui
+   
+    local frame = Instance.new("Frame")
+    frame.Name = "MainFrame"
+    frame.Size = UDim2.new(0, 320, 0, 280)
+    frame.Position = UDim2.new(0.5, -160, 0.5, -140)
+    frame.BackgroundColor3 = Color3.fromRGB(15, 23, 42)
+    frame.BorderSizePixel = 0
+    frame.ZIndex = 10
+    frame.Parent = screenGui
+   
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 12)
+    corner.Parent = frame
+   
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Color3.fromRGB(0, 255, 255)
+    stroke.Thickness = 2
+    stroke.Parent = frame
+   
+    local header = Instance.new("Frame")
+    header.Name = "Header"
+    header.Size = UDim2.new(1, 0, 0, 60)
+    header.BackgroundColor3 = Color3.fromRGB(0, 255, 255)
+    header.BackgroundTransparency = 0.9
+    header.ZIndex = 11
+    header.Parent = frame
+   
+    local headerCorner = Instance.new("UICorner")
+    headerCorner.CornerRadius = UDim.new(0, 12)
+    headerCorner.Parent = header
+   
+    local title = Instance.new("TextLabel")
+    title.Name = "Title"
+    title.Size = UDim2.new(1, 0, 0, 22)
+    title.Position = UDim2.new(0, 0, 0, 12)
+    title.BackgroundTransparency = 1
+    title.Text = "PRIMES DA HOOD AUTO FARM"
+    title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    title.Font = Enum.Font.GothamBold
+    title.TextSize = 18
+    title.TextXAlignment = Enum.TextXAlignment.Center
+    title.ZIndex = 12
+    title.Parent = header
+   
+    local subtitle = Instance.new("TextLabel")
+    subtitle.Name = "Subtitle"
+    subtitle.Size = UDim2.new(1, 0, 0, 15)
+    subtitle.Position = UDim2.new(0, 0, 0, 37)
+    subtitle.BackgroundTransparency = 1
+    subtitle.Text = "discord.gg/primedhc"
+    subtitle.TextColor3 = Color3.fromRGB(200, 255, 255)
+    subtitle.Font = Enum.Font.Gotham
+    subtitle.TextSize = 12
+    subtitle.TextXAlignment = Enum.TextXAlignment.Center
+    subtitle.ZIndex = 12
+    subtitle.Parent = header
+   
+    local statsContainer = Instance.new("Frame")
+    statsContainer.Name = "StatsContainer"
+    statsContainer.Size = UDim2.new(1, -20, 1, -70)
+    statsContainer.Position = UDim2.new(0, 10, 0, 65)
+    statsContainer.BackgroundTransparency = 1
+    statsContainer.ZIndex = 11
+    statsContainer.Parent = frame
+   
+    local function createStatLabel(yPos, name, initialText)
+        local label = Instance.new("TextLabel")
+        label.Name = name
+        label.Size = UDim2.new(1, 0, 0, 30)
+        label.Position = UDim2.new(0, 0, 0, yPos)
+        label.BackgroundTransparency = 1
+        label.Text = initialText or ""
+        label.TextColor3 = Color3.fromRGB(220, 220, 220)
+        label.Font = Enum.Font.Gotham
+        label.TextSize = 15
+        label.TextXAlignment = Enum.TextXAlignment.Center
+        label.ZIndex = 11
+        label.Parent = statsContainer
+        return label
     end
-    
-    -- Teleport to a position near the cash (offset by 5-8 studs)
-    local offsetX = math.random(-8, 8)
-    local offsetZ = math.random(-8, 8)
-    hrp.CFrame = CFrame.new(collectPos + Vector3.new(offsetX, 3, offsetZ))
+   
+    createStatLabel(0, "UserLabel", "User: Loading...")
+    createStatLabel(35, "FPSLabel", "FPS: Loading...")
+    createStatLabel(70, "TimeLabel", "Time Running: Loading...")
+    createStatLabel(105, "StartCashLabel", "Start Cash: Loading...")
+    createStatLabel(140, "CurrentCashLabel", "Current Cash: Loading...")
+    createStatLabel(175, "ProfitLabel", "Total Profit: Loading...")
+   
+    return screenGui, blackScreen
+end
+local gui, blackScreen = setupGUI()
+local isBlackScreenEnabled = true
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.Comma then
+        isBlackScreenEnabled = not isBlackScreenEnabled
+        blackScreen.Visible = isBlackScreenEnabled
+    end
+end)
+local function updateGUI()
+    pcall(function()
+        if not gui or not gui:FindFirstChild("MainFrame") then return end
+        local stats = gui.MainFrame:FindFirstChild("StatsContainer")
+        if not stats then return end
+       
+        local elapsed = tick() - startTime
+        local hours = math.floor(elapsed / 3600)
+        local minutes = math.floor((elapsed % 3600) / 60)
+        local seconds = math.floor(elapsed % 60)
+        local timeString = string.format("%02d:%02d:%02d", hours, minutes, seconds)
+       
+        local currentCash = Player.DataFolder.Currency.Value
+        local profit = currentCash - startCash
+       
+        stats.FPSLabel.Text = "FPS: " .. tostring(fpsVar)
+        stats.FPSLabel.TextColor3 = Color3.fromRGB(0, 255, 255)
+        stats.UserLabel.Text = "User: " .. Player.Name
+        stats.UserLabel.TextColor3 = Color3.fromRGB(0, 255, 255)
+        stats.TimeLabel.Text = "Time Running: " .. timeString
+        stats.StartCashLabel.Text = "Start Cash: " .. formatMoney(startCash)
+        stats.CurrentCashLabel.Text = "Current Cash: " .. formatMoney(currentCash)
+       
+        local profitLabel = stats.ProfitLabel
+        profitLabel.Text = "Total Profit: " .. formatMoney(profit)
+        profitLabel.TextColor3 = (profit >= 0) and Color3.fromRGB(0, 255, 255) or Color3.fromRGB(255, 80, 80)
+    end)
+end
+-- ===== WAIT FOR GAME TO LOAD =====
+repeat task.wait() until game:IsLoaded()
+repeat task.wait() until Player.Character
+repeat task.wait() until Player.Character:FindFirstChild("HumanoidRootPart")
+repeat task.wait() until Player:FindFirstChild("DataFolder")
+repeat task.wait() until Player.DataFolder:FindFirstChild("Currency")
+print("[Prime DHC] Game fully loaded, initializing farm...")
+-- Initialize values
+getgenv().MaxAttackTime = 10
+getgenv().CollectRange = 50
+getgenv().CollectTime = 5
+getgenv().SpawnWait = 1.5
+getgenv().ReloadThreshold = 3
+startTime = tick()
+startCash = Player.DataFolder.Currency.Value
+pcall(updateGUI)
+-- Update GUI loop
+task.spawn(function()
+    while true do
+        pcall(updateGUI)
+        task.wait(1)
+    end
+end)
+-- ===== HELPER FUNCTIONS =====
+local function randomDelay(min, max)
+    min = min or getgenv().AutofarmSettings.Main.Delay
+    max = max or min + 0.2
+    task.wait(math.random(min * 100, max * 100) / 100)
+end
+local function hasAUG()
+    local containers = {Player.Backpack}
+    local char = Player.Character
+    if char then table.insert(containers, char) end
+   
+    for _, container in pairs(containers) do
+        for _, tool in pairs(container:GetChildren()) do
+            if tool:IsA("Tool") and string.lower(tool.Name):find("aug") then
+                return true
+            end
+        end
+    end
+    return false
+end
+local function getAUGTool()
+    local char = Player.Character
+    if not char then return nil end
+   
+    for _, tool in pairs(char:GetChildren()) do
+        if tool:IsA("Tool") and string.lower(tool.Name):find("aug") then
+            return tool
+        end
+    end
+   
+    for _, tool in pairs(Player.Backpack:GetChildren()) do
+        if tool:IsA("Tool") and string.lower(tool.Name):find("aug") then
+            return tool
+        end
+    end
+   
+    return nil
+end
+-- ===== SHOP FUNCTIONS =====
+local augBuyPos = Vector3.new(-273.0153041799, 52.2666088321, -216.104867764)
+local ammoBuyPos = Vector3.new(-277.8882854219, 52.3626088321, -217.0169677738)
+local function findShopItem(pos, isAmmo)
+    local shop = workspace:FindFirstChild("Ignored")
+    if not shop then return nil, nil, math.huge, "" end
+    shop = shop:FindFirstChild("Shop")
+    if not shop then return nil, nil, math.huge, "" end
+   
+    local minDist = math.huge
+    local bestCD, bestHead, bestName = nil, nil, ""
+   
+    for _, item in pairs(shop:GetChildren()) do
+        local nameLower = string.lower(item.Name)
+        if nameLower:find("aug") and (isAmmo == (nameLower:find("ammo") ~= nil)) then
+            local head = item:FindFirstChild("Head")
+            local cd = item:FindFirstChild("ClickDetector") or (head and head:FindFirstChild("ClickDetector"))
+            if cd and head then
+                local dist = (head.Position - pos).Magnitude
+                if dist < minDist then
+                    minDist = dist
+                    bestCD = cd
+                    bestHead = head
+                    bestName = item.Name
+                end
+            end
+        end
+    end
+   
+    return bestCD, bestHead, minDist, bestName
+end
+local function buyItem(pos, isAmmo)
+    local char = Player.Character
+    if not char then return false end
+   
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return false end
+   
+    hrp.CFrame = CFrame.new(pos)
+    hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+    hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+    task.wait(0.5)
+   
+    local cd, head, dist, name = findShopItem(pos, isAmmo)
+    if cd and head then
+        if isAmmo then
+            for i = 1, 100 do
+                pcall(function()
+                    _fireclickdetector(cd)
+                end)
+                task.wait(0.035)
+            end
+        else
+            pcall(function()
+                _fireclickdetector(cd)
+            end)
+            task.wait(0.5)
+        end
+        return true
+    else
+        warn("[Prime DHC] Could not find shop item")
+        return false
+    end
+end
+local function autoBuy()
+    if not hasAUG() then
+        buyItem(augBuyPos, false)
+        task.wait(3)
+    end
+    buyItem(ammoBuyPos, true)
+end
+-- Initial buy
+autoBuy()
+-- ===== MONEY COLLECTION =====
+local function collectMoney(moneyPart)
+    if moneyPart and moneyPart.Parent then
+        local cd = moneyPart:FindFirstChild("ClickDetector")
+        if cd then
+            pcall(function()
+                _fireclickdetector(cd)
+            end)
+        end
+    end
+end
+-- ===== MAIN FARM FUNCTION =====
+local function robTarget(targetModel, openPart)
+    local char = Player.Character
+    if not char or not char.Parent then return end
+   
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    local hum = char:FindFirstChild("Humanoid")
+    if not hrp or not hum then return end
+   
+    local targetHead = targetModel:FindFirstChild("Head")
+    local targetHum = targetModel:FindFirstChild("Humanoid")
+    local targetRoot = targetModel:FindFirstChild("HumanoidRootPart")
+    if not targetHead or not targetHum or targetHum.Health <= 0 or not targetRoot then return end
+   
+    -- Position behind cashier
+    local tpPos = openPart.Position - openPart.CFrame.LookVector * 4
+   
+    hrp.CFrame = CFrame.new(tpPos)
+    hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+    randomDelay(0.3, 0.5)
+   
+    -- Equip weapon
+    local tool = getAUGTool()
+    if not tool then
+        warn("[Prime DHC] No weapon found!")
+        autoBuy()
+        return
+    end
+   
+    if tool.Parent ~= char then
+        hum:EquipTool(tool)
+        task.wait(0.6)
+    end
+   
+    -- Enable silent aim to bottom part
+    SilentAimPart = targetRoot
+    SilentAimVelocity = targetRoot.Velocity
+   
+    -- Shoot target
+    local shootStart = tick()
+    local shootConn
+   
+    shootConn = RunService.Heartbeat:Connect(function()
+        pcall(function()
+            if (tick() - shootStart) > getgenv().MaxAttackTime then
+                if shootConn then shootConn:Disconnect() end
+                return
+            end
+           
+            if not targetHum or targetHum.Health <= 0 then
+                if shootConn then shootConn:Disconnect() end
+                return
+            end
+           
+            -- Shoot
+            local equipped = char:FindFirstChildOfClass("Tool")
+            if equipped and string.lower(equipped.Name):find("aug") then
+                pcall(function()
+                    equipped:Activate()
+                end)
+            else
+                tool = getAUGTool()
+                if tool and tool.Parent ~= char then
+                    hum:EquipTool(tool)
+                end
+            end
+        end)
+    end)
+   
+    -- Wait for death
+    while targetHum and targetHum.Health > 0 and (tick() - shootStart) < getgenv().MaxAttackTime do
+        task.wait(0.1)
+    end
+   
+    if shootConn then
+        shootConn:Disconnect()
+    end
+   
+    -- Disable silent aim
+    SilentAimPart = nil
+   
+    randomDelay(getgenv().SpawnWait, getgenv().SpawnWait + 0.3)
+   
+    -- Collect money from center
+    local targetPos = targetModel.PrimaryPart and targetModel.PrimaryPart.Position
+        or (targetModel:FindFirstChild("HumanoidRootPart") and targetModel.HumanoidRootPart.Position)
+        or openPart.Position
+   
+    hrp.CFrame = CFrame.new(targetPos + Vector3.new(0, 3, 0))
     hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
    
     local vacuumStart = tick()
     while (tick() - vacuumStart) < getgenv().CollectTime do
-        local dropsFolder2 = Workspace:FindFirstChild("Ignored")
-        if dropsFolder2 then
-            local dropFolder2 = dropsFolder2:FindFirstChild("Drop")
-            if dropFolder2 then
-                for _, cashPart in pairs(dropFolder2:GetChildren()) do
+        local dropsFolder = Workspace:FindFirstChild("Ignored")
+        if dropsFolder then
+            local dropFolder = dropsFolder:FindFirstChild("Drop")
+            if dropFolder then
+                for _, cashPart in pairs(dropFolder:GetChildren()) do
                     if cashPart:IsA("Part") and cashPart.Name == "MoneyDrop" then
-                        collectMoney(cashPart)
+                        local dist = (cashPart.Position - targetPos).Magnitude
+                        if dist <= getgenv().CollectRange then
+                            collectMoney(cashPart)
+                        end
                     end
                 end
             end
         end
         task.wait(0.1)
     end
+   
+    -- Move away
+    hrp.CFrame = CFrame.new(9999, 50, 9999)
+end
+-- ===== AUTO RELOAD =====
+local MainEvent = ReplicatedStorage:FindFirstChild("MainEvent")
+local function getEquippedTool()
+    local char = Player.Character
+    return char and char:FindFirstChildOfClass("Tool")
+end
+local function needsReload(tool)
+    if not tool then return false end
+    local ammo = tool:FindFirstChild("Ammo")
+    if ammo and ammo:IsA("IntValue") then
+        return ammo.Value <= getgenv().ReloadThreshold
+    end
+    return true
+end
+local function doReload()
+    if not MainEvent then return false end
+    local tool = getEquippedTool()
+    if tool and needsReload(tool) and MainEvent.Parent then
+        MainEvent:FireServer("Reload", tool)
+        return true
+    end
+    return false
+end
+task.spawn(function()
+    while true do
+        pcall(doReload)
+        task.wait(0.12 + math.random(0, 8)/100)
+    end
+end)
+-- ===== SERVER HOP =====
+local function performHop()
+    pcall(function()
+        if _G.farmGui then _G.farmGui:Destroy() end
+        TeleportService:Teleport(game.PlaceId)
+    end)
+end
+task.spawn(function()
+    while true do
+        if getgenv().AutofarmSettings.ServerHop.Enabled then
+            task.wait(getgenv().AutofarmSettings.ServerHop.Interval * 60)
+            pcall(performHop)
+        else
+            task.wait(10)
+        end
+    end
+end)
+-- ===== WEBHOOK =====
+local function sendWebhook()
+    if not getgenv().AutofarmSettings.Webhook.Webhook or getgenv().AutofarmSettings.Webhook.Webhook == "" then
+        return false
+    end
+   
+    local success, err = pcall(function()
+        local currentCash = Player.DataFolder.Currency.Value
+        local profit = currentCash - startCash
+        local elapsed = tick() - startTime
+        local hours = math.floor(elapsed / 3600)
+        local minutes = math.floor((elapsed % 3600) / 60)
+        local seconds = math.floor(elapsed % 60)
+       
+        local profitPerHour = (elapsed > 0) and ((profit / elapsed) * 3600) or 0
+       
+        local data = {
+            ["username"] = "Prime DHC Auto Farm",
+            ["embeds"] = {{
+                ["title"] = "Farm Status Report",
+                ["description"] = "**User:** " .. Player.Name .. "\n**Display Name:** " .. Player.DisplayName,
+                ["color"] = 65535,
+                ["fields"] = {
+                    {
+                        ["name"] = "Runtime",
+                        ["value"] = string.format("%02d:%02d:%02d", hours, minutes, seconds),
+                        ["inline"] = true
+                    },
+                    {
+                        ["name"] = "FPS",
+                        ["value"] = tostring(fpsVar),
+                        ["inline"] = true
+                    },
+                    {
+                        ["name"] = "Starting Cash",
+                        ["value"] = formatMoney(startCash),
+                        ["inline"] = true
+                    },
+                    {
+                        ["name"] = "Current Cash",
+                        ["value"] = formatMoney(currentCash),
+                        ["inline"] = true
+                    },
+                    {
+                        ["name"] = "Total Profit",
+                        ["value"] = formatMoney(profit),
+                        ["inline"] = true
+                    },
+                    {
+                        ["name"] = "Profit Per Hour",
+                        ["value"] = formatMoney(profitPerHour),
+                        ["inline"] = false
+                    }
+                },
+                ["footer"] = {
+                    ["text"] = "Prime DHC • discord.gg/primedhc"
+                },
+                ["timestamp"] = os.date("!%Y-%m-%dT%H:%M:%S")
+            }}
+        }
+       
+        local req = http_request or request or syn.request or fluxus.request
+        if req then
+            req({
+                Url = getgenv().AutofarmSettings.Webhook.Webhook,
+                Method = "POST",
+                Headers = {["Content-Type"] = "application/json"},
+                Body = HttpService:JSONEncode(data)
+            })
+        end
+    end)
+   
+    if not success then
+        warn("[Prime DHC] Webhook error:", tostring(err))
+    end
+   
+    return success
+end
+task.spawn(function()
+    if getgenv().AutofarmSettings.Webhook.Webhook ~= "" then
+        task.wait(5)
+        pcall(sendWebhook)
+    end
+   
+    while true do
+        task.wait(getgenv().AutofarmSettings.Webhook.Interval)
+        if getgenv().AutofarmSettings.Webhook.Webhook ~= "" then
+            pcall(sendWebhook)
+        end
+    end
+end)
+-- ===== ANTI-AFK =====
+Player.Idled:Connect(function()
+    VirtualUser:CaptureController()
+    VirtualUser:ClickButton2(Vector2.new())
+end)
+-- ===== CHARACTER RESPAWN HANDLER =====
+Player.CharacterAdded:Connect(function(newChar)
+    task.wait(2)
+    autoBuy()
+    startTime = tick()
+    startCash = Player.DataFolder.Currency.Value
+    pcall(updateGUI)
+end)
+-- ===== ANTI-KO =====
+task.spawn(function()
+    while true do
+        pcall(function()
+            local char = Player.Character
+            if char then
+                local effects = char:FindFirstChild("BodyEffects")
+                if effects then
+                    local ko = effects:FindFirstChild("K.O")
+                    if ko and ko.Value == true then
+                        for _, v in pairs(char:GetChildren()) do
+                            if v:IsA("BasePart") then
+                                v:Destroy()
+                            end
+                        end
+                    end
+                end
+            end
+        end)
+        task.wait(0.1)
+    end
+end)
+-- ===== MAIN FARM LOOP =====
+task.spawn(function()
+    while true do
+        pcall(function()
+            local foundTarget = false
+            local cashiersFolder = Workspace:FindFirstChild("Cashiers")
+           
+            if cashiersFolder then
+                for _, cashierModel in pairs(cashiersFolder:GetChildren()) do
+                    local humanoid = cashierModel:FindFirstChild("Humanoid")
+                    if humanoid and humanoid.Health > 0 then
+                        local openPart = cashierModel:FindFirstChild("Open")
+                        if openPart then
+                            foundTarget = true
+                            robTarget(cashierModel, openPart)
+                           
+                            local speed = getgenv().AutofarmSettings.Main.Speed
+                            local minDelay = 0.5 / speed
+                            local maxDelay = minDelay + 0.2
+                            randomDelay(minDelay, maxDelay)
+                            break
+                        end
+                    end
+                end
+            end
+           
+            if not foundTarget then
+                task.wait(2)
+            end
+        end)
+        task.wait(0.5)
+    end
+end)
+while wait() do
+    pcall(function()
+        if game:GetService("Players").LocalPlayer.Character:FindFirstChild("BodyEffects"):FindFirstChild("K.O").Value == true then
+            for i, v in pairs(game:GetService("Players").LocalPlayer.Character:GetChildren()) do
+                if v:IsA("BasePart") then
+                    v:Destroy()
+                end
+            end
+        end
+    end)
+end
+print("[Prime DHC] Auto farm fully loaded and running!")
