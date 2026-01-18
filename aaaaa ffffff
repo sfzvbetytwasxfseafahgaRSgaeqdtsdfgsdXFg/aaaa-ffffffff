@@ -744,30 +744,83 @@ end)
 
 -- Webhook function
 local function sendWebhook()
-    if getgenv().AutofarmSettings.Webhook.Webhook == "" then return end
-    
-    local currentCash = Player.DataFolder.Currency.Value
-    local profit = currentCash - startCash
-    local elapsed = tick() - startTime
-    local hours = math.floor(elapsed / 3600)
-    local minutes = math.floor((elapsed % 3600) / 60)
-    
-    local data = {
-        ["username"] = "Prime Farm Logger",
-        ["embeds"] = {{
-            ["title"] = "Farm Update: " .. Player.Name,
-            ["description"] = "Running for " .. hours .. "h " .. minutes .. "m",
-            ["color"] = 1752220,
-            ["fields"] = {
-                {name = "Current Cash", value = formatMoney(currentCash), inline = true},
-                {name = "Total Profit", value = formatMoney(profit), inline = true},
-                {name = "FPS", value = tostring(fpsVar), inline = true}
-            }
-        }}
-    }
+    if not getgenv().AutofarmSettings.Webhook.Webhook or getgenv().AutofarmSettings.Webhook.Webhook == "" then return end
     
     pcall(function()
-        HttpService:PostAsync(getgenv().AutofarmSettings.Webhook.Webhook, HttpService:JSONEncode(data), Enum.HttpContentType.ApplicationJson)
+        local currentCash = Player.DataFolder.Currency.Value
+        local profit = currentCash - startCash
+        local elapsed = tick() - startTime
+        local hours = math.floor(elapsed / 3600)
+        local minutes = math.floor((elapsed % 3600) / 60)
+        local seconds = math.floor(elapsed % 60)
+        
+        -- Calculate per hour rates
+        local profitPerHour = 0
+        if elapsed > 0 then
+            profitPerHour = (profit / elapsed) * 3600
+        end
+        
+        local data = {
+            ["username"] = "Prime DHC Auto Farm",
+            ["embeds"] = {{
+                ["title"] = "Farm Status Report",
+                ["description"] = "**User:** " .. Player.Name .. "\n**Display Name:** " .. Player.DisplayName,
+                ["color"] = 65535, -- Brightest cyan (00FFFF in hex)
+                ["fields"] = {
+                    {
+                        ["name"] = "Runtime",
+                        ["value"] = string.format("%02d:%02d:%02d", hours, minutes, seconds),
+                        ["inline"] = true
+                    },
+                    {
+                        ["name"] = "FPS",
+                        ["value"] = tostring(fpsVar),
+                        ["inline"] = true
+                    },
+                    {
+                        ["name"] = "Server Size",
+                        ["value"] = tostring(#Players:GetPlayers()) .. " players",
+                        ["inline"] = true
+                    },
+                    {
+                        ["name"] = "Starting Cash",
+                        ["value"] = formatMoney(startCash),
+                        ["inline"] = true
+                    },
+                    {
+                        ["name"] = "Current Cash",
+                        ["value"] = formatMoney(currentCash),
+                        ["inline"] = true
+                    },
+                    {
+                        ["name"] = "Total Profit",
+                        ["value"] = formatMoney(profit),
+                        ["inline"] = true
+                    },
+                    {
+                        ["name"] = "Profit Per Hour",
+                        ["value"] = formatMoney(profitPerHour),
+                        ["inline"] = false
+                    }
+                },
+                ["footer"] = {
+                    ["text"] = "Prime DHC • discord.gg/primedhc"
+                },
+                ["timestamp"] = os.date("!%Y-%m-%dT%H:%M:%S")
+            }}
+        }
+        
+        local success, response = pcall(function()
+            return HttpService:PostAsync(
+                getgenv().AutofarmSettings.Webhook.Webhook,
+                HttpService:JSONEncode(data),
+                Enum.HttpContentType.ApplicationJson
+            )
+        end)
+        
+        if not success then
+            warn("[Prime DHC Auto Farm] Webhook failed to send")
+        end
     end)
 end
 
