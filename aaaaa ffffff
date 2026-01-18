@@ -396,57 +396,84 @@ local function getAUGTool()
     return nil
 end
 
--- ===== DIRECT GUN FIRING (NO HOOKS, NO MOUSE) =====
+-- ===== NAMECALL HOOK FOR BULLET REDIRECTION =====
 local MainEvent = ReplicatedStorage:FindFirstChild("MainEvent")
+local currentAimTarget = nil
+local silentAimEnabled = false
 
-local function shootAtTarget(targetHead)
-    if not MainEvent then return false end
+local oldNamecall
+oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
+    local args = {...}
+    local method = getnamecallmethod()
     
+    -- Intercept gun firing
+    if method == "FireServer" and self.Name == "MainEvent" then
+        if silentAimEnabled and currentAimTarget and args[1] == "MOUSE1" then
+            local targetHead = currentAimTarget:FindFirstChild("Head")
+            if targetHead and targetHead.Parent then
+                local char = Player.Character
+                if char then
+                    local tool = char:FindFirstChildOfClass("Tool")
+                    if tool and string.lower(tool.Name):find("aug") then
+                        local handle = tool:FindFirstChild("Handle")
+                        if handle then
+                            -- Calculate proper trajectory to target
+                            local origin = handle.Position
+                            local targetPos = targetHead.Position
+                            local direction = (targetPos - origin).Unit * 1000
+                            
+                            -- Raycast to target
+                            local rayParams = RaycastParams.new()
+                            rayParams.FilterDescendantsInstances = {char}
+                            rayParams.FilterType = Enum.RaycastFilterType.Blacklist
+                            
+                            local result = Workspace:Raycast(origin, direction, rayParams)
+                            
+                            if result then
+                                -- Override args with our calculated hit
+                                args[2] = {
+                                    ["Hit"] = result.Instance,
+                                    ["Target"] = result.Instance,
+                                    ["Pos"] = result.Position,
+                                    ["Position"] = result.Position,
+                                    ["Normal"] = result.Normal,
+                                    ["Distance"] = (origin - result.Position).Magnitude,
+                                    ["Cframe"] = CFrame.new(result.Position),
+                                    ["p"] = result.Position,
+                                    ["X"] = result.Position.X,
+                                    ["Y"] = result.Position.Y,
+                                    ["Z"] = result.Position.Z
+                                }
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    return oldNamecall(self, unpack(args))
+end))
+
+print("[Prime DHC] Silent aim hook installed!")
+
+-- ===== TOOL ACTIVATION SYSTEM =====
+local function shootAtTarget(targetHead)
     local char = Player.Character
     if not char then return false end
     
     local tool = char:FindFirstChildOfClass("Tool")
     if not tool or not string.lower(tool.Name):find("aug") then return false end
     
-    local handle = tool:FindFirstChild("Handle")
-    if not handle then return false end
-    
-    -- Calculate hit data
-    local origin = handle.Position
-    local targetPos = targetHead.Position
-    local direction = (targetPos - origin).Unit * 500
-    
-    -- Perform raycast
-    local rayParams = RaycastParams.new()
-    rayParams.FilterDescendantsInstances = {char}
-    rayParams.FilterType = Enum.RaycastFilterType.Blacklist
-    
-    local result = Workspace:Raycast(origin, direction, rayParams)
-    
-    local hitPos = result and result.Position or targetPos
-    local hitPart = result and result.Instance or targetHead
-    
-    -- Fire the gun remote directly (Da Hood gun system)
+    -- Just activate the tool, hook will handle redirection
     pcall(function()
-        MainEvent:FireServer("MOUSE1", {
-            ["Hit"] = hitPart,
-            ["Target"] = hitPart,
-            ["Pos"] = hitPos,
-            ["Position"] = hitPos,
-            ["Normal"] = result and result.Normal or Vector3.new(0, 1, 0),
-            ["Distance"] = (origin - hitPos).Magnitude,
-            ["Cframe"] = CFrame.new(hitPos),
-            ["p"] = hitPos,
-            ["X"] = hitPos.X,
-            ["Y"] = hitPos.Y,
-            ["Z"] = hitPos.Z
-        })
+        tool:Activate()
     end)
     
     return true
 end
 
-print("[Prime DHC] Direct firing system loaded!")
+print("[Prime DHC] Shooting system loaded!")
 
 -- ===== SHOP FUNCTIONS =====
 local augBuyPos = Vector3.new(-273.0153041799, 52.2666088321, -216.104867764)
