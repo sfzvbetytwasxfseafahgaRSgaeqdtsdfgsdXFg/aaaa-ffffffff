@@ -58,16 +58,17 @@ local Lighting = game:GetService("Lighting")
 local MaterialService = game:GetService("MaterialService")
 local Player = Players.LocalPlayer
 -- ===== SILENT AIM SETUP =====
-local SilentAimTarget = nil
+local SilentAimPart = nil
+local SilentAimVelocity = Vector3.new(0,0,0)
+local Prediction = 0.165
 if hookmetamethod then
-    local oldNamecall = nil
-    oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
-        local args = {...}
-        if SilentAimTarget and getnamecallmethod() == "FireServer" and self.Name == "MainEvent" and args[1] == "UpdateMousePos" then
-            args[2] = SilentAimTarget.Position
-            return oldNamecall(self, unpack(args))
+    local oldIndex = nil
+    oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, key)
+        if self:IsA("Mouse") and (key == "Hit" or key == "Target") and SilentAimPart then
+            local predicted = SilentAimPart.CFrame + (SilentAimVelocity * Prediction)
+            return (key == "Hit" and predicted or SilentAimPart)
         end
-        return oldNamecall(self, ...)
+        return oldIndex(self, key)
     end))
     print("[Prime DHC] Silent aim hook enabled!")
 else
@@ -480,15 +481,15 @@ local function robTarget(targetModel, openPart)
    
     local targetHead = targetModel:FindFirstChild("Head")
     local targetHum = targetModel:FindFirstChild("Humanoid")
+    local targetRoot = targetModel:FindFirstChild("HumanoidRootPart")
     if not targetHead or not targetHum or targetHum.Health <= 0 then return end
    
     print("[Prime DHC] Robbing target...")
    
     -- Position behind cashier
-    local aimPosition = targetHead.Position - Vector3.new(0, 3, 0)
     local tpPos = openPart.Position - openPart.CFrame.LookVector * 4
    
-    hrp.CFrame = CFrame.lookAt(tpPos, aimPosition)
+    hrp.CFrame = CFrame.new(tpPos)
     hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
     randomDelay(0.3, 0.5)
    
@@ -506,7 +507,8 @@ local function robTarget(targetModel, openPart)
     end
    
     -- Enable silent aim
-    SilentAimTarget = targetHead
+    SilentAimPart = targetHead
+    SilentAimVelocity = targetRoot and targetRoot.Velocity or Vector3.new(0,0,0)
    
     -- Shoot target
     local shootStart = tick()
@@ -522,11 +524,6 @@ local function robTarget(targetModel, openPart)
             if not targetHum or targetHum.Health <= 0 then
                 if shootConn then shootConn:Disconnect() end
                 return
-            end
-           
-            -- Keep aiming (optional, but kept for fallback)
-            if hrp and targetHead then
-                hrp.CFrame = CFrame.lookAt(hrp.Position, aimPosition)
             end
            
             -- Shoot
@@ -554,7 +551,7 @@ local function robTarget(targetModel, openPart)
     end
    
     -- Disable silent aim
-    SilentAimTarget = nil
+    SilentAimPart = nil
    
     print("[Prime DHC] Target eliminated, collecting money...")
     randomDelay(getgenv().SpawnWait, getgenv().SpawnWait + 0.3)
