@@ -459,17 +459,9 @@ local function collectMoney(moneyPart)
     if moneyPart and moneyPart.Parent then
         local cd = moneyPart:FindFirstChild("ClickDetector")
         if cd then
-            local char = Player.Character
-            if char and char:FindFirstChild("HumanoidRootPart") then
-                local oldCFrame = char.HumanoidRootPart.CFrame
-                char.HumanoidRootPart.CFrame = CFrame.new(moneyPart.Position)
-                task.wait(0.1)
-                pcall(function()
-                    _fireclickdetector(cd)
-                end)
-                task.wait(0.1)
-                char.HumanoidRootPart.CFrame = oldCFrame
-            end
+            pcall(function()
+                _fireclickdetector(cd)
+            end)
         end
     end
 end
@@ -485,7 +477,7 @@ local function robTarget(targetModel, openPart)
     local targetHead = targetModel:FindFirstChild("Head")
     local targetHum = targetModel:FindFirstChild("Humanoid")
     local targetRoot = targetModel:FindFirstChild("HumanoidRootPart")
-    if not targetHead or not targetHum or targetHum.Health <= 0 then return end
+    if not targetHead or not targetHum or targetHum.Health <= 0 or not targetRoot then return end
    
     -- Position behind cashier
     local tpPos = openPart.Position - openPart.CFrame.LookVector * 4
@@ -507,9 +499,9 @@ local function robTarget(targetModel, openPart)
         task.wait(0.6)
     end
    
-    -- Enable silent aim
-    SilentAimPart = targetHead
-    SilentAimVelocity = targetRoot and targetRoot.Velocity or Vector3.new(0,0,0)
+    -- Enable silent aim to bottom part
+    SilentAimPart = targetRoot
+    SilentAimVelocity = targetRoot.Velocity
    
     -- Shoot target
     local shootStart = tick()
@@ -556,7 +548,7 @@ local function robTarget(targetModel, openPart)
    
     randomDelay(getgenv().SpawnWait, getgenv().SpawnWait + 0.3)
    
-    -- Collect money
+    -- Collect money from center
     local targetPos = targetModel.PrimaryPart and targetModel.PrimaryPart.Position
         or (targetModel:FindFirstChild("HumanoidRootPart") and targetModel.HumanoidRootPart.Position)
         or openPart.Position
