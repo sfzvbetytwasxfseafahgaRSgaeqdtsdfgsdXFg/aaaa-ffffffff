@@ -841,4 +841,170 @@ local WebhookManager = {}
 
 function WebhookManager.send()
     if not getgenv().AutofarmSettings or not getgenv().AutofarmSettings.Webhook.Webhook or 
-       getgenv().AutofarmSettings.Webhook.Webhook ==
+       getgenv().AutofarmSettings.Webhook.Webhook == "" then
+        return false
+    end
+    
+    local success = pcall(function()
+        local currentCash = Player.DataFolder.Currency.Value
+        local profit = currentCash - State.startCash
+        local elapsed = tick() - State.startTime
+        local hours = math.floor(elapsed / 3600)
+        local minutes = math.floor((elapsed % 3600) / 60)
+        local seconds = math.floor(elapsed % 60)
+        
+        local profitPerHour = (elapsed > 0) and ((profit / elapsed) * 3600) or 0
+        
+        local data = {
+            ["username"] = "Prime DHC Auto Farm",
+            ["embeds"] = {{
+                ["title"] = "Farm Status Report",
+                ["description"] = "**User:** " .. Player.Name .. "\n**Display Name:** " .. Player.DisplayName,
+                ["color"] = 65535,
+                ["fields"] = {
+                    {["name"] = "Runtime", ["value"] = string.format("%02d:%02d:%02d", hours, minutes, seconds), ["inline"] = true},
+                    {["name"] = "FPS", ["value"] = tostring(State.fps), ["inline"] = true},
+                    {["name"] = "Starting Cash", ["value"] = Utils.formatMoney(State.startCash), ["inline"] = true},
+                    {["name"] = "Current Cash", ["value"] = Utils.formatMoney(currentCash), ["inline"] = true},
+                    {["name"] = "Total Profit", ["value"] = Utils.formatMoney(profit), ["inline"] = true},
+                    {["name"] = "Profit Per Hour", ["value"] = Utils.formatMoney(profitPerHour), ["inline"] = false}
+                },
+                ["footer"] = {["text"] = "Prime DHC • discord.gg/primedhc"},
+                ["timestamp"] = os.date("!%Y-%m-%dT%H:%M:%S")
+            }}
+        }
+        
+        local req = http_request or request or syn.request or fluxus.request
+        if req then
+            req({
+                Url = getgenv().AutofarmSettings.Webhook.Webhook,
+                Method = "POST",
+                Headers = {["Content-Type"] = "application/json"},
+                Body = Services.HttpService:JSONEncode(data)
+            })
+        end
+    end)
+    
+    return success
+end
+
+-- ===== INITIALIZATION =====
+local function initialize()
+    print("[Prime DHC] Waiting for game to load...")
+    
+    repeat task.wait() until game:IsLoaded()
+    repeat task.wait() until Player.Character
+    repeat task.wait() until Player.Character:FindFirstChild("HumanoidRootPart")
+    repeat task.wait() until Player:FindFirstChild("DataFolder")
+    repeat task.wait() until Player.DataFolder:FindFirstChild("Currency")
+    
+    print("[Prime DHC] Game loaded, initializing systems...")
+    
+    -- Initialize state
+    State.startTime = tick()
+    State.startCash = Player.DataFolder.Currency.Value
+    
+    -- Setup GUI
+    GUIManager.setup()
+    GUIManager.update()
+    
+    -- Initialize systems
+    OptimizationManager.init()
+    SafetyManager.init()
+    
+    -- Initial purchase
+    ShopManager.autoBuy()
+    task.wait(1.5)
+    
+    -- Teleport to safe position
+    local char = Player.Character
+    if Utils.isValidCharacter(char) then
+        WeaponManager.equipAUG()
+        Utils.safeTP(char.HumanoidRootPart, Vector3.new(9999, 50, 9999))
+    end
+    
+    print("[Prime DHC] Initialization complete!")
+end
+
+-- ===== MAIN LOOP =====
+local function mainLoop()
+    State.isRunning = true
+    
+    while State.isRunning do
+        local success = pcall(function()
+            local target, openPart = TargetManager.findBestTarget()
+            
+            if target and openPart then
+                CombatManager.robTarget(target, openPart)
+                
+                -- Dynamic delay based on speed setting
+                if getgenv().AutofarmSettings and getgenv().AutofarmSettings.Main.Speed then
+                    local speed = getgenv().AutofarmSettings.Main.Speed
+                    local minDelay = 0.5 / speed
+                    Utils.randomDelay(minDelay, minDelay + 0.2)
+                else
+                    Utils.randomDelay(0.5, 0.7)
+                end
+            else
+                -- No targets available, wait longer
+                task.wait(2)
+            end
+        end)
+        
+        if not success then
+            task.wait(1)
+        end
+        
+        task.wait(Config.Performance.TargetCheckInterval)
+    end
+end
+
+-- ===== BACKGROUND TASKS =====
+local function startBackgroundTasks()
+    -- GUI updater
+    task.spawn(function()
+        while true do
+            GUIManager.update()
+            task.wait(Config.Performance.GuiUpdateInterval)
+        end
+    end)
+    
+    -- Webhook sender
+    task.spawn(function()
+        if getgenv().AutofarmSettings and getgenv().AutofarmSettings.Webhook.Webhook ~= "" then
+            task.wait(5)
+            WebhookManager.send()
+        end
+        
+        while true do
+            if getgenv().AutofarmSettings and getgenv().AutofarmSettings.Webhook.Webhook ~= "" then
+                task.wait(getgenv().AutofarmSettings.Webhook.Interval)
+                WebhookManager.send()
+            else
+                task.wait(60)
+            end
+        end
+    end)
+    
+    -- Server hopper
+    task.spawn(function()
+        while true do
+            if getgenv().AutofarmSettings and getgenv().AutofarmSettings.ServerHop.Enabled then
+                task.wait(getgenv().AutofarmSettings.ServerHop.Interval * 60)
+                pcall(function()
+                    if _G.farmGui then _G.farmGui:Destroy() end
+                    Services.TeleportService:Teleport(game.PlaceId)
+                end)
+            else
+                task.wait(10)
+            end
+        end
+    end)
+end
+
+-- ===== START EVERYTHING =====
+initialize()
+startBackgroundTasks()
+mainLoop()
+
+print("[Prime DHC] Auto farm is now running!")
