@@ -396,92 +396,66 @@ local function getAUGTool()
     return nil
 end
 
--- ===== SILENT AIM / AIMBOT FOR SELIWARE =====
-local currentTarget = nil
-local aimEnabled = false
+-- ===== GUN FIRING SYSTEM (NO MOUSE) =====
+local MainEvent = ReplicatedStorage:FindFirstChild("MainEvent")
 
--- Hook the mouse to return our target position
-local oldIndex
-oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, key)
-    if aimEnabled and currentTarget then
-        if self == Mouse then
-            if key == "Hit" then
-                local targetHead = currentTarget:FindFirstChild("Head")
-                if targetHead then
-                    return CFrame.new(targetHead.Position)
-                end
-            elseif key == "Target" then
-                local targetHead = currentTarget:FindFirstChild("Head")
-                if targetHead then
-                    return targetHead
-                end
-            elseif key == "X" then
-                local targetHead = currentTarget:FindFirstChild("Head")
-                if targetHead then
-                    local camera = Workspace.CurrentCamera
-                    local viewportPoint = camera:WorldToViewportPoint(targetHead.Position)
-                    return viewportPoint.X
-                end
-            elseif key == "Y" then
-                local targetHead = currentTarget:FindFirstChild("Head")
-                if targetHead then
-                    local camera = Workspace.CurrentCamera
-                    local viewportPoint = camera:WorldToViewportPoint(targetHead.Position)
-                    return viewportPoint.Y
-                end
-            end
-        end
-    end
-    return oldIndex(self, key)
-end))
-
--- Alternative: Hook workspace.Raycast for silent aim
-local oldNamecall
-oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
-    local method = getnamecallmethod()
-    local args = {...}
-    
-    if aimEnabled and currentTarget and method == "FindPartOnRayWithIgnoreList" then
-        local targetHead = currentTarget:FindFirstChild("Head")
-        if targetHead and self == Workspace then
-            -- Redirect ray to target head
-            local char = Player.Character
-            if char then
-                local tool = char:FindFirstChildOfClass("Tool")
-                if tool and string.lower(tool.Name):find("aug") then
-                    local handle = tool:FindFirstChild("Handle")
-                    if handle then
-                        local origin = handle.Position
-                        local direction = (targetHead.Position - origin).Unit * 500
-                        args[1] = Ray.new(origin, direction)
-                    end
-                end
-            end
-        end
-    elseif aimEnabled and currentTarget and method == "Raycast" then
-        local targetHead = currentTarget:FindFirstChild("Head")
-        if targetHead and self == Workspace then
-            -- Redirect raycast to target head
-            local char = Player.Character
-            if char then
-                local tool = char:FindFirstChildOfClass("Tool")
-                if tool and string.lower(tool.Name):find("aug") then
-                    local handle = tool:FindFirstChild("Handle")
-                    if handle then
-                        local origin = handle.Position
-                        local direction = (targetHead.Position - origin).Unit * 500
-                        args[1] = origin
-                        args[2] = direction
-                    end
-                end
-            end
-        end
+local function fireGunAtTarget(targetHead)
+    if not MainEvent then 
+        warn("[Prime DHC] MainEvent not found!")
+        return false 
     end
     
-    return oldNamecall(self, unpack(args))
-end))
+    local char = Player.Character
+    if not char then return false end
+    
+    local tool = char:FindFirstChildOfClass("Tool")
+    if not tool or not string.lower(tool.Name):find("aug") then 
+        return false 
+    end
+    
+    local handle = tool:FindFirstChild("Handle")
+    if not handle then return false end
+    
+    -- Calculate hit position and part
+    local origin = handle.Position
+    local direction = (targetHead.Position - origin).Unit * 500
+    
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterDescendantsInstances = {char}
+    raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+    
+    local result = Workspace:Raycast(origin, direction, raycastParams)
+    
+    if result then
+        -- Fire the gun using the MainEvent
+        pcall(function()
+            MainEvent:FireServer("MOUSE1", {
+                ["Hit"] = result.Position,
+                ["Target"] = result.Instance or targetHead,
+                ["Distance"] = (origin - result.Position).Magnitude,
+                ["Cframe"] = CFrame.new(result.Position),
+                ["Position"] = result.Position,
+                ["Normal"] = result.Normal or Vector3.new(0, 1, 0)
+            })
+        end)
+        return true
+    else
+        -- If raycast fails, shoot directly at head
+        pcall(function()
+            MainEvent:FireServer("MOUSE1", {
+                ["Hit"] = targetHead.Position,
+                ["Target"] = targetHead,
+                ["Distance"] = (origin - targetHead.Position).Magnitude,
+                ["Cframe"] = CFrame.new(targetHead.Position),
+                ["Position"] = targetHead.Position,
+                ["Normal"] = Vector3.new(0, 1, 0)
+            })
+        end)
+        return true
+    end
+end
 
-print("[Prime DHC] Silent aim hooks installed!")
+print("[Prime DHC] Gun firing system loaded!")
 
 -- ===== SHOP FUNCTIONS =====
 local augBuyPos = Vector3.new(-273.0153041799, 52.2666088321, -216.104867764)
@@ -577,7 +551,7 @@ local function collectMoney(moneyPart)
     end
 end
 
--- ===== MAIN FARM FUNCTION WITH SILENT AIM =====
+-- ===== MAIN FARM FUNCTION WITH DIRECT REMOTE FIRING =====
 local function robTarget(targetModel, openPart)
     local char = Player.Character
     if not char or not char.Parent then return end
@@ -592,10 +566,6 @@ local function robTarget(targetModel, openPart)
     
     print("[Prime DHC] Robbing target...")
     
-    -- Set current target for silent aim
-    currentTarget = targetModel
-    aimEnabled = true
-    
     -- Position behind cashier
     local aimPosition = targetHead.Position - Vector3.new(0, 3, 0)
     local tpPos = openPart.Position - openPart.CFrame.LookVector * 4
@@ -608,8 +578,6 @@ local function robTarget(targetModel, openPart)
     local tool = getAUGTool()
     if not tool then
         warn("[Prime DHC] No weapon found!")
-        aimEnabled = false
-        currentTarget = nil
         autoBuy()
         return
     end
@@ -619,37 +587,34 @@ local function robTarget(targetModel, openPart)
         task.wait(0.6)
     end
     
-    -- Shoot target with silent aim
+    -- Shoot target directly via remote (NO MOUSE)
     local shootStart = tick()
     local shootConn
+    local shotsFired = 0
     
     shootConn = RunService.Heartbeat:Connect(function()
         pcall(function()
             if (tick() - shootStart) > getgenv().MaxAttackTime then
                 if shootConn then shootConn:Disconnect() end
-                aimEnabled = false
-                currentTarget = nil
                 return
             end
             
             if not targetHum or targetHum.Health <= 0 then
                 if shootConn then shootConn:Disconnect() end
-                aimEnabled = false
-                currentTarget = nil
                 return
             end
             
             -- Keep character aimed at target
             if hrp and targetHead then
-                hrp.CFrame = CFrame.lookAt(hrp.Position, aimPosition)
+                hrp.CFrame = CFrame.lookAt(hrp.Position, targetHead.Position)
             end
             
-            -- Shoot (silent aim handles the aiming automatically)
+            -- Fire gun directly at target (bypasses mouse completely)
             local equipped = char:FindFirstChildOfClass("Tool")
             if equipped and string.lower(equipped.Name):find("aug") then
-                pcall(function()
-                    equipped:Activate()
-                end)
+                if fireGunAtTarget(targetHead) then
+                    shotsFired = shotsFired + 1
+                end
             else
                 tool = getAUGTool()
                 if tool and tool.Parent ~= char then
@@ -668,11 +633,7 @@ local function robTarget(targetModel, openPart)
         shootConn:Disconnect()
     end
     
-    -- Disable silent aim
-    aimEnabled = false
-    currentTarget = nil
-    
-    print("[Prime DHC] Target eliminated, collecting money...")
+    print("[Prime DHC] Target eliminated (" .. shotsFired .. " shots), collecting money...")
     randomDelay(getgenv().SpawnWait, getgenv().SpawnWait + 0.3)
     
     -- Collect money
@@ -708,8 +669,6 @@ local function robTarget(targetModel, openPart)
 end
 
 -- ===== AUTO RELOAD =====
-local MainEvent = ReplicatedStorage:FindFirstChild("MainEvent")
-
 local function getEquippedTool()
     local char = Player.Character
     return char and char:FindFirstChildOfClass("Tool")
