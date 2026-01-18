@@ -532,7 +532,7 @@ local function collectMoney(moneyPart)
     end
 end
 
--- ===== MAIN FARM FUNCTION (SELIWARE FIXED) =====
+-- ===== MAIN FARM FUNCTION (FULLY FIXED) =====
 local function robTarget(targetModel, openPart)
     local char = Player.Character
     if not char or not char.Parent then return end
@@ -547,25 +547,20 @@ local function robTarget(targetModel, openPart)
     
     print("[Prime DHC] Robbing target...")
     
-    -- Position behind cashier
-    local tpPos = openPart.Position - openPart.CFrame.LookVector * 4
-    local aimPos = targetHead.Position
+    -- Calculate position behind cashier
+    local behindOffset = openPart.CFrame.LookVector * -4
+    local tpPos = openPart.Position + behindOffset
     
-    -- Teleport and face target
-    hrp.CFrame = CFrame.new(tpPos, aimPos)
+    -- Teleport directly without rotation
+    hrp.CFrame = CFrame.new(tpPos)
     hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
     hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+    task.wait(0.3)
     
-    -- Anchor to prevent movement
-    local originalAnchored = hrp.Anchored
-    hrp.Anchored = true
-    task.wait(0.5)
-    
-    -- Equip weapon
+    -- Equip weapon FIRST before anchoring
     local tool = getAUGTool()
     if not tool then
         warn("[Prime DHC] No weapon found!")
-        hrp.Anchored = originalAnchored
         autoBuy()
         return
     end
@@ -577,7 +572,7 @@ local function robTarget(targetModel, openPart)
     
     -- Enable silent aim
     silentAimTarget = targetModel
-    print("[Prime DHC] Silent aim enabled")
+    print("[Prime DHC] Silent aim enabled, starting robbery")
     
     -- Shoot target
     local shootStart = tick()
@@ -585,48 +580,70 @@ local function robTarget(targetModel, openPart)
     local hitCount = 0
     local shotsFired = 0
     
-    print("[Prime DHC] Starting to shoot. Target health:", math.floor(lastHealth))
+    print("[Prime DHC] Target health:", math.floor(lastHealth))
     
+    -- Main shooting loop
     while targetHum.Parent and targetHum.Health > 0 and (tick() - shootStart) < getgenv().MaxAttackTime do
-        pcall(function()
+        local success = pcall(function()
+            -- Check if we still have weapon equipped
             local equipped = char:FindFirstChildOfClass("Tool")
             
             if equipped and string.lower(equipped.Name):find("aug") then
-                -- Fire weapon
-                equipped:Activate()
-                shotsFired = shotsFired + 1
-                
-                -- Check for hits
-                if targetHum.Health < lastHealth then
-                    hitCount = hitCount + 1
-                    local damage = lastHealth - targetHum.Health
-                    print("[Prime DHC] HIT #" .. hitCount .. "! Damage:", math.floor(damage), "HP remaining:", math.floor(targetHum.Health))
-                    lastHealth = targetHum.Health
+                -- Check ammo
+                local ammo = equipped:FindFirstChild("Ammo")
+                if ammo and ammo:IsA("IntValue") and ammo.Value > 0 then
+                    -- Fire weapon
+                    equipped:Activate()
+                    shotsFired = shotsFired + 1
+                    
+                    -- Check for damage
+                    task.wait(0.05)
+                    if targetHum.Health < lastHealth then
+                        hitCount = hitCount + 1
+                        local damage = lastHealth - targetHum.Health
+                        print("[Prime DHC] HIT! Damage:", math.floor(damage), "HP:", math.floor(targetHum.Health))
+                        lastHealth = targetHum.Health
+                    end
+                else
+                    -- Out of ammo, try to reload
+                    local mainEvent = ReplicatedStorage:FindFirstChild("MainEvent")
+                    if mainEvent then
+                        mainEvent:FireServer("Reload", equipped)
+                        task.wait(1)
+                    end
                 end
-                
-                task.wait(0.05)
             else
-                -- Re-equip weapon
+                -- Lost weapon, re-equip
                 tool = getAUGTool()
                 if tool and tool.Parent ~= char then
                     hum:EquipTool(tool)
-                    task.wait(0.3)
+                    task.wait(0.4)
+                else
+                    -- No weapon at all
+                    break
                 end
             end
         end)
+        
+        if not success then
+            task.wait(0.1)
+        end
     end
     
     -- Cleanup
-    hrp.Anchored = originalAnchored
     silentAimTarget = nil
     
     if not targetHum.Parent or targetHum.Health <= 0 then
         print("[Prime DHC] Target eliminated! Shots:", shotsFired, "Hits:", hitCount)
     else
-        print("[Prime DHC] Target survived. Shots:", shotsFired, "Hits:", hitCount, "HP:", math.floor(targetHum.Health))
+        warn("[Prime DHC] Target survived. Shots:", shotsFired, "Hits:", hitCount, "HP:", math.floor(targetHum.Health))
+        -- If target didn't die and we didn't hit much, try buying more ammo
+        if hitCount < 5 then
+            autoBuy()
+        end
     end
     
-    randomDelay(getgenv().SpawnWait, getgenv().SpawnWait + 0.3)
+    task.wait(getgenv().SpawnWait)
     
     -- Collect money
     local targetPos = targetModel.PrimaryPart and targetModel.PrimaryPart.Position 
