@@ -63,6 +63,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Lighting = game:GetService("Lighting")
 local MaterialService = game:GetService("MaterialService")
 local Player = Players.LocalPlayer
+local Mouse = Player:GetMouse()
 
 -- ===== FPS TRACKING =====
 local fpsVar = 60
@@ -395,6 +396,30 @@ local function getAUGTool()
     return nil
 end
 
+-- ===== MOUSE AIM FUNCTION FOR SELIWARE =====
+local function aimMouseAt(targetPosition)
+    pcall(function()
+        local camera = Workspace.CurrentCamera
+        local viewportPoint = camera:WorldToViewportPoint(targetPosition)
+        
+        -- Use mousemoverel if available (Seliware)
+        if mousemoverel then
+            local mouseLocation = UserInputService:GetMouseLocation()
+            local deltaX = viewportPoint.X - mouseLocation.X
+            local deltaY = viewportPoint.Y - mouseLocation.Y
+            mousemoverel(deltaX, deltaY)
+        -- Fallback to mousemoveabs
+        elseif mousemoveabs then
+            mousemoveabs(viewportPoint.X, viewportPoint.Y)
+        -- Last resort: try to use mouse object
+        else
+            pcall(function()
+                Mouse.Hit = CFrame.new(targetPosition)
+            end)
+        end
+    end)
+end
+
 -- ===== SHOP FUNCTIONS =====
 local augBuyPos = Vector3.new(-273.0153041799, 52.2666088321, -216.104867764)
 local ammoBuyPos = Vector3.new(-277.8882854219, 52.3626088321, -217.0169677738)
@@ -489,7 +514,7 @@ local function collectMoney(moneyPart)
     end
 end
 
--- ===== MAIN FARM FUNCTION =====
+-- ===== MAIN FARM FUNCTION WITH MOUSE AIMING =====
 local function robTarget(targetModel, openPart)
     local char = Player.Character
     if not char or not char.Parent then return end
@@ -525,7 +550,7 @@ local function robTarget(targetModel, openPart)
         task.wait(0.6)
     end
     
-    -- Shoot target
+    -- Shoot target with mouse aiming
     local shootStart = tick()
     local shootConn
     
@@ -541,10 +566,13 @@ local function robTarget(targetModel, openPart)
                 return
             end
             
-            -- Keep aiming
+            -- Keep character aimed at target
             if hrp and targetHead then
                 hrp.CFrame = CFrame.lookAt(hrp.Position, aimPosition)
             end
+            
+            -- Aim mouse at target head (CRITICAL FIX FOR SELIWARE)
+            aimMouseAt(targetHead.Position)
             
             -- Shoot
             local equipped = char:FindFirstChildOfClass("Tool")
