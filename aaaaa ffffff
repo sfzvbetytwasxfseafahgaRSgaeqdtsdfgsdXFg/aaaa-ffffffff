@@ -52,58 +52,35 @@ _G.fireclickdetector = _fireclickdetector
 
 print("[Prime DHC] Compatibility layer loaded!")
 
--- ===== ORIGINAL SILENT AIM SYSTEM (RESTORED) =====
-print("[Prime DHC] Initializing original silent aim...")
+-- ===== NEW SELIWARE SILENT AIM =====
+print("[Prime DHC] Initializing Seliware-compatible silent aim...")
 
-local silentAimEnabled = false
-local currentTarget = nil
+local silentAimTarget = nil
 local MainEvent = ReplicatedStorage:WaitForChild("MainEvent")
 
--- Original hookmetamethod approach
-local mt = getrawmetatable(game)
-setreadonly(mt, false)
-
-local oldNamecall = mt.__namecall
-local oldIndex = mt.__index
-
-mt.__namecall = newcclosure(function(self, ...)
+-- Simple but effective approach for Seliware
+local oldNamecall
+oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
     local args = {...}
     local method = getnamecallmethod()
     
-    if method == "FireServer" and self == MainEvent then
-        if silentAimEnabled and currentTarget then
-            local action = args[1]
-            
-            -- Hook the UpdateMousePos event
-            if action == "UpdateMousePos" then
-                local targetHead = currentTarget:FindFirstChild("Head")
-                if targetHead then
-                    -- Replace mouse position with target head
-                    args[2] = targetHead.Position
-                end
-            end
-        end
-    end
-    
-    return oldNamecall(self, unpack(args))
-end)
-
-mt.__index = newcclosure(function(self, key)
-    if silentAimEnabled and currentTarget then
-        if key == "Hit" then
-            local targetHead = currentTarget:FindFirstChild("Head")
+    -- Hook MainEvent FireServer calls
+    if method == "FireServer" and self.Name == "MainEvent" then
+        if silentAimTarget and args[1] == "UpdateMousePos" then
+            -- Get target head position
+            local targetHead = silentAimTarget:FindFirstChild("Head")
             if targetHead then
-                return CFrame.new(targetHead.Position)
+                -- Replace the position argument with target's head
+                args[2] = targetHead.Position
+                return oldNamecall(self, unpack(args))
             end
         end
     end
     
-    return oldIndex(self, key)
+    return oldNamecall(self, ...)
 end)
 
-setreadonly(mt, true)
-
-print("[Prime DHC] Original silent aim initialized!")
+print("[Prime DHC] Seliware silent aim loaded!")
 
 -- ===== SERVICES =====
 local Players = game:GetService("Players")
@@ -543,10 +520,7 @@ local function collectMoney(moneyPart)
     end
 end
 
--- ===== SILENT AIM SETUP =====
--- (Silent aim is now initialized in compatibility layer above)
-
--- ===== MAIN FARM FUNCTION =====
+-- ===== MAIN FARM FUNCTION (FIXED FOR SELIWARE) =====
 local function robTarget(targetModel, openPart)
     local char = Player.Character
     if not char or not char.Parent then return end
@@ -559,19 +533,23 @@ local function robTarget(targetModel, openPart)
     local targetHum = targetModel:FindFirstChild("Humanoid")
     if not targetHead or not targetHum or targetHum.Health <= 0 then return end
     
-    print("[Prime DHC] Robbing target with silent aim...")
+    print("[Prime DHC] Robbing target...")
     
-    -- Position behind cashier (ONE TIME, no looping)
+    -- Position behind cashier ONCE
     local tpPos = openPart.Position - openPart.CFrame.LookVector * 4
     hrp.CFrame = CFrame.new(tpPos)
     hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
     hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+    
+    -- Anchor character to prevent glitching
+    hrp.Anchored = true
     task.wait(0.5)
     
     -- Equip weapon
     local tool = getAUGTool()
     if not tool then
         warn("[Prime DHC] No weapon found!")
+        hrp.Anchored = false
         autoBuy()
         return
     end
@@ -582,31 +560,29 @@ local function robTarget(targetModel, openPart)
     end
     
     -- Enable silent aim
-    currentTarget = targetModel
-    silentAimEnabled = true
-    print("[Prime DHC] Silent aim ENABLED")
+    silentAimTarget = targetModel
+    print("[Prime DHC] Silent aim enabled for:", targetModel.Name)
     
     -- Shoot target
     local shootStart = tick()
-    local shotsFired = 0
     local lastHealth = targetHum.Health
+    local hitCount = 0
     
     print("[Prime DHC] Starting to shoot. Target health:", lastHealth)
     
-    -- Simple shooting loop - tool:Activate() will use Mouse.Hit which is hooked
     while targetHum and targetHum.Health > 0 and (tick() - shootStart) < getgenv().MaxAttackTime do
         local equipped = char:FindFirstChildOfClass("Tool")
         
         if equipped and string.lower(equipped.Name):find("aug") then
-            -- Shoot - silent aim hook will redirect to head
+            -- Fire weapon (silent aim will redirect to head)
             pcall(function()
                 equipped:Activate()
             end)
-            shotsFired = shotsFired + 1
             
-            -- Check for damage
+            -- Check if we're hitting
             if targetHum.Health < lastHealth then
-                print("[Prime DHC] HIT! Damage:", lastHealth - targetHum.Health, "Remaining:", targetHum.Health)
+                hitCount = hitCount + 1
+                print("[Prime DHC] HIT #" .. hitCount .. "! Damage:", math.floor(lastHealth - targetHum.Health), "Remaining HP:", math.floor(targetHum.Health))
                 lastHealth = targetHum.Health
             end
             
@@ -623,15 +599,14 @@ local function robTarget(targetModel, openPart)
         end
     end
     
-    -- Disable silent aim
-    silentAimEnabled = false
-    currentTarget = nil
-    print("[Prime DHC] Silent aim DISABLED")
+    -- Unanchor and disable silent aim
+    hrp.Anchored = false
+    silentAimTarget = nil
     
     if targetHum.Health <= 0 then
-        print("[Prime DHC] Target eliminated! Shots fired:", shotsFired)
+        print("[Prime DHC] Target eliminated! Total hits:", hitCount)
     else
-        print("[Prime DHC] Target survived. Shots fired:", shotsFired, "Remaining health:", targetHum.Health)
+        print("[Prime DHC] Target survived. Total hits:", hitCount, "Remaining HP:", math.floor(targetHum.Health))
     end
     
     randomDelay(getgenv().SpawnWait, getgenv().SpawnWait + 0.3)
