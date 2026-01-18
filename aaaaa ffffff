@@ -46,8 +46,6 @@ local _fireclickdetector = fireclickdetector or function(detector, distance)
 end
 
 -- Make functions global for compatibility
-getgenv().fireclickdetector = _fireclickdetector
-_G.fireclickdetector = _fireclickdetector
 
 print("[Prime DHC] Compatibility layer loaded!")
 
