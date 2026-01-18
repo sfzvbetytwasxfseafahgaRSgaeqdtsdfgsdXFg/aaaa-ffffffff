@@ -452,8 +452,21 @@ local function autoBuy()
     end
     buyItem(ammoBuyPos, true)
 end
--- Initial buy
+-- Initial buy and setup
 autoBuy()
+task.wait(1)
+local char = Player.Character
+if char then
+    local tool = getAUGTool()
+    local hum = char:FindFirstChild("Humanoid")
+    if tool and hum and tool.Parent ~= char then
+        hum:EquipTool(tool)
+    end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if hrp then
+        hrp.CFrame = CFrame.new(9999, 50, 9999)
+    end
+end
 -- ===== MONEY COLLECTION =====
 local function collectMoney(moneyPart)
     if moneyPart and moneyPart.Parent then
@@ -759,6 +772,10 @@ Player.CharacterAdded:Connect(function(newChar)
     local hum = newChar:FindFirstChild("Humanoid")
     if tool and hum and tool.Parent ~= newChar then
         hum:EquipTool(tool)
+    end
+    local hrp = newChar:FindFirstChild("HumanoidRootPart")
+    if hrp then
+        hrp.CFrame = CFrame.new(9999, 50, 9999)
     end
     startTime = tick()
     startCash = Player.DataFolder.Currency.Value
