@@ -590,9 +590,6 @@ local function robTarget(targetModel, openPart)
         end
         task.wait(0.1)
     end
-  
-    -- Move away
-    hrp.CFrame = CFrame.new(9999, 50, 9999)
 end
 -- ===== AUTO RELOAD =====
 local MainEvent = ReplicatedStorage:FindFirstChild("MainEvent")
