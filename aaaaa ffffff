@@ -396,66 +396,69 @@ local function getAUGTool()
     return nil
 end
 
--- ===== GUN FIRING SYSTEM (NO MOUSE) =====
+-- ===== NAMECALL HOOK FOR GUN FIRING (SELIWARE) =====
 local MainEvent = ReplicatedStorage:FindFirstChild("MainEvent")
+local currentTarget = nil
+local hookActive = false
 
-local function fireGunAtTarget(targetHead)
-    if not MainEvent then 
-        warn("[Prime DHC] MainEvent not found!")
-        return false 
+local oldNamecall
+oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
+    local method = getnamecallmethod()
+    local args = {...}
+    
+    -- Hook MainEvent FireServer calls when shooting
+    if hookActive and currentTarget and self == MainEvent and method == "FireServer" then
+        if args[1] == "MOUSE1" or args[1] == "MouseButton1Down" or args[1] == "UpdateMousePos" then
+            local targetHead = currentTarget:FindFirstChild("Head")
+            if targetHead then
+                local char = Player.Character
+                if char then
+                    local tool = char:FindFirstChildOfClass("Tool")
+                    if tool and string.lower(tool.Name):find("aug") then
+                        local handle = tool:FindFirstChild("Handle")
+                        if handle then
+                            -- Calculate proper hit data
+                            local origin = handle.Position
+                            local targetPos = targetHead.Position
+                            local direction = (targetPos - origin).Unit * 500
+                            
+                            -- Perform raycast
+                            local rayParams = RaycastParams.new()
+                            rayParams.FilterDescendantsInstances = {char}
+                            rayParams.FilterType = Enum.RaycastFilterType.Blacklist
+                            
+                            local rayResult = Workspace:Raycast(origin, direction, rayParams)
+                            
+                            if rayResult then
+                                -- Override with our target data
+                                args[2] = {
+                                    ["Hit"] = rayResult.Position,
+                                    ["Target"] = rayResult.Instance,
+                                    ["Position"] = rayResult.Position,
+                                    ["Normal"] = rayResult.Normal,
+                                    ["Distance"] = (origin - rayResult.Position).Magnitude
+                                }
+                            else
+                                -- Direct hit to target if no raycast
+                                args[2] = {
+                                    ["Hit"] = targetPos,
+                                    ["Target"] = targetHead,
+                                    ["Position"] = targetPos,
+                                    ["Normal"] = Vector3.new(0, 1, 0),
+                                    ["Distance"] = (origin - targetPos).Magnitude
+                                }
+                            end
+                        end
+                    end
+                end
+            end
+        end
     end
     
-    local char = Player.Character
-    if not char then return false end
-    
-    local tool = char:FindFirstChildOfClass("Tool")
-    if not tool or not string.lower(tool.Name):find("aug") then 
-        return false 
-    end
-    
-    local handle = tool:FindFirstChild("Handle")
-    if not handle then return false end
-    
-    -- Calculate hit position and part
-    local origin = handle.Position
-    local direction = (targetHead.Position - origin).Unit * 500
-    
-    local raycastParams = RaycastParams.new()
-    raycastParams.FilterDescendantsInstances = {char}
-    raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
-    
-    local result = Workspace:Raycast(origin, direction, raycastParams)
-    
-    if result then
-        -- Fire the gun using the MainEvent
-        pcall(function()
-            MainEvent:FireServer("MOUSE1", {
-                ["Hit"] = result.Position,
-                ["Target"] = result.Instance or targetHead,
-                ["Distance"] = (origin - result.Position).Magnitude,
-                ["Cframe"] = CFrame.new(result.Position),
-                ["Position"] = result.Position,
-                ["Normal"] = result.Normal or Vector3.new(0, 1, 0)
-            })
-        end)
-        return true
-    else
-        -- If raycast fails, shoot directly at head
-        pcall(function()
-            MainEvent:FireServer("MOUSE1", {
-                ["Hit"] = targetHead.Position,
-                ["Target"] = targetHead,
-                ["Distance"] = (origin - targetHead.Position).Magnitude,
-                ["Cframe"] = CFrame.new(targetHead.Position),
-                ["Position"] = targetHead.Position,
-                ["Normal"] = Vector3.new(0, 1, 0)
-            })
-        end)
-        return true
-    end
-end
+    return oldNamecall(self, unpack(args))
+end))
 
-print("[Prime DHC] Gun firing system loaded!")
+print("[Prime DHC] Namecall hook installed!")
 
 -- ===== SHOP FUNCTIONS =====
 local augBuyPos = Vector3.new(-273.0153041799, 52.2666088321, -216.104867764)
@@ -551,7 +554,7 @@ local function collectMoney(moneyPart)
     end
 end
 
--- ===== MAIN FARM FUNCTION WITH DIRECT REMOTE FIRING =====
+-- ===== MAIN FARM FUNCTION WITH NAMECALL HOOK =====
 local function robTarget(targetModel, openPart)
     local char = Player.Character
     if not char or not char.Parent then return end
@@ -566,6 +569,10 @@ local function robTarget(targetModel, openPart)
     
     print("[Prime DHC] Robbing target...")
     
+    -- Enable hook and set target
+    currentTarget = targetModel
+    hookActive = true
+    
     -- Position behind cashier
     local aimPosition = targetHead.Position - Vector3.new(0, 3, 0)
     local tpPos = openPart.Position - openPart.CFrame.LookVector * 4
@@ -578,6 +585,8 @@ local function robTarget(targetModel, openPart)
     local tool = getAUGTool()
     if not tool then
         warn("[Prime DHC] No weapon found!")
+        hookActive = false
+        currentTarget = nil
         autoBuy()
         return
     end
@@ -587,7 +596,7 @@ local function robTarget(targetModel, openPart)
         task.wait(0.6)
     end
     
-    -- Shoot target directly via remote (NO MOUSE)
+    -- Shoot target (hook redirects bullets automatically)
     local shootStart = tick()
     local shootConn
     local shotsFired = 0
@@ -596,11 +605,15 @@ local function robTarget(targetModel, openPart)
         pcall(function()
             if (tick() - shootStart) > getgenv().MaxAttackTime then
                 if shootConn then shootConn:Disconnect() end
+                hookActive = false
+                currentTarget = nil
                 return
             end
             
             if not targetHum or targetHum.Health <= 0 then
                 if shootConn then shootConn:Disconnect() end
+                hookActive = false
+                currentTarget = nil
                 return
             end
             
@@ -609,12 +622,13 @@ local function robTarget(targetModel, openPart)
                 hrp.CFrame = CFrame.lookAt(hrp.Position, targetHead.Position)
             end
             
-            -- Fire gun directly at target (bypasses mouse completely)
+            -- Activate tool (hook will redirect the shot)
             local equipped = char:FindFirstChildOfClass("Tool")
             if equipped and string.lower(equipped.Name):find("aug") then
-                if fireGunAtTarget(targetHead) then
+                pcall(function()
+                    equipped:Activate()
                     shotsFired = shotsFired + 1
-                end
+                end)
             else
                 tool = getAUGTool()
                 if tool and tool.Parent ~= char then
@@ -632,6 +646,10 @@ local function robTarget(targetModel, openPart)
     if shootConn then
         shootConn:Disconnect()
     end
+    
+    -- Disable hook
+    hookActive = false
+    currentTarget = nil
     
     print("[Prime DHC] Target eliminated (" .. shotsFired .. " shots), collecting money...")
     randomDelay(getgenv().SpawnWait, getgenv().SpawnWait + 0.3)
