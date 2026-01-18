@@ -70,7 +70,6 @@ if hookmetamethod then
         end
         return oldIndex(self, key)
     end))
-    print("[Prime DHC] Silent aim hook enabled!")
 else
     warn("[Prime DHC] hookmetamethod not supported, silent aim may not work!")
 end
@@ -427,7 +426,6 @@ local function buyItem(pos, isAmmo)
    
     local cd, head, dist, name = findShopItem(pos, isAmmo)
     if cd and head then
-        print("[Prime DHC] Buying:", name, "Ammo:", isAmmo)
         if isAmmo then
             for i = 1, 100 do
                 pcall(function()
@@ -441,7 +439,6 @@ local function buyItem(pos, isAmmo)
             end)
             task.wait(0.5)
         end
-        print("[Prime DHC] Purchase complete")
         return true
     else
         warn("[Prime DHC] Could not find shop item")
@@ -450,11 +447,9 @@ local function buyItem(pos, isAmmo)
 end
 local function autoBuy()
     if not hasAUG() then
-        print("[Prime DHC] Buying AUG...")
         buyItem(augBuyPos, false)
         task.wait(3)
     end
-    print("[Prime DHC] Buying ammo...")
     buyItem(ammoBuyPos, true)
 end
 -- Initial buy
@@ -464,9 +459,17 @@ local function collectMoney(moneyPart)
     if moneyPart and moneyPart.Parent then
         local cd = moneyPart:FindFirstChild("ClickDetector")
         if cd then
-            pcall(function()
-                _fireclickdetector(cd)
-            end)
+            local char = Player.Character
+            if char and char:FindFirstChild("HumanoidRootPart") then
+                local oldCFrame = char.HumanoidRootPart.CFrame
+                char.HumanoidRootPart.CFrame = CFrame.new(moneyPart.Position)
+                task.wait(0.1)
+                pcall(function()
+                    _fireclickdetector(cd)
+                end)
+                task.wait(0.1)
+                char.HumanoidRootPart.CFrame = oldCFrame
+            end
         end
     end
 end
@@ -483,8 +486,6 @@ local function robTarget(targetModel, openPart)
     local targetHum = targetModel:FindFirstChild("Humanoid")
     local targetRoot = targetModel:FindFirstChild("HumanoidRootPart")
     if not targetHead or not targetHum or targetHum.Health <= 0 then return end
-   
-    print("[Prime DHC] Robbing target...")
    
     -- Position behind cashier
     local tpPos = openPart.Position - openPart.CFrame.LookVector * 4
@@ -553,7 +554,6 @@ local function robTarget(targetModel, openPart)
     -- Disable silent aim
     SilentAimPart = nil
    
-    print("[Prime DHC] Target eliminated, collecting money...")
     randomDelay(getgenv().SpawnWait, getgenv().SpawnWait + 0.3)
    
     -- Collect money
@@ -585,7 +585,6 @@ local function robTarget(targetModel, openPart)
    
     -- Move away
     hrp.CFrame = CFrame.new(9999, 50, 9999)
-    print("[Prime DHC] Robbery complete!")
 end
 -- ===== AUTO RELOAD =====
 local MainEvent = ReplicatedStorage:FindFirstChild("MainEvent")
@@ -760,7 +759,6 @@ task.spawn(function()
     end
 end)
 -- ===== MAIN FARM LOOP =====
-print("[Prime DHC] Starting main farm loop...")
 task.spawn(function()
     while true do
         pcall(function()
