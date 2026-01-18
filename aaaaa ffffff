@@ -454,21 +454,6 @@ local function autoBuy()
 end
 -- Initial buy
 autoBuy()
-task.wait(1.5)
-local char = Player.Character
-if char then
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    local hum = char:FindFirstChild("Humanoid")
-    if hrp and hum then
-        local tool = getAUGTool()
-        if tool and tool.Parent ~= char then
-            hum:EquipTool(tool)
-            task.wait(0.4)
-        end
-        hrp.CFrame = CFrame.new(9999, 50, 9999)
-        hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-    end
-end
 -- ===== MONEY COLLECTION =====
 local function collectMoney(moneyPart)
     if moneyPart and moneyPart.Parent then
@@ -497,9 +482,10 @@ local function robTarget(targetModel, openPart)
     local hum = char:FindFirstChild("Humanoid")
     if not hrp or not hum then return end
   
+    local targetHead = targetModel:FindFirstChild("Head")
     local targetHum = targetModel:FindFirstChild("Humanoid")
     local targetRoot = targetModel:FindFirstChild("HumanoidRootPart")
-    if not targetRoot or not targetHum or targetHum.Health <= 0 then return end
+    if not targetHead or not targetHum or targetHum.Health <= 0 then return end
   
     -- Position behind cashier
     local tpPos = openPart.Position - openPart.CFrame.LookVector * 4
@@ -522,7 +508,7 @@ local function robTarget(targetModel, openPart)
     end
   
     -- Enable silent aim
-    SilentAimPart = targetRoot
+    SilentAimPart = targetHead
     SilentAimVelocity = targetRoot and targetRoot.Velocity or Vector3.new(0,0,0)
   
     -- Shoot target
@@ -596,6 +582,9 @@ local function robTarget(targetModel, openPart)
         end
         task.wait(0.1)
     end
+  
+    -- Move away
+    hrp.CFrame = CFrame.new(9999, 50, 9999)
 end
 -- ===== AUTO RELOAD =====
 local MainEvent = ReplicatedStorage:FindFirstChild("MainEvent")
