@@ -52,35 +52,47 @@ _G.fireclickdetector = _fireclickdetector
 
 print("[Prime DHC] Compatibility layer loaded!")
 
--- ===== NEW SELIWARE SILENT AIM =====
+-- ===== SELIWARE-COMPATIBLE SILENT AIM =====
 print("[Prime DHC] Initializing Seliware-compatible silent aim...")
 
 local silentAimTarget = nil
-local MainEvent = ReplicatedStorage:WaitForChild("MainEvent")
 
--- Simple but effective approach for Seliware
-local oldNamecall
-oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
-    local args = {...}
-    local method = getnamecallmethod()
-    
-    -- Hook MainEvent FireServer calls
-    if method == "FireServer" and self.Name == "MainEvent" then
-        if silentAimTarget and args[1] == "UpdateMousePos" then
-            -- Get target head position
-            local targetHead = silentAimTarget:FindFirstChild("Head")
-            if targetHead then
-                -- Replace the position argument with target's head
-                args[2] = targetHead.Position
-                return oldNamecall(self, unpack(args))
-            end
-        end
-    end
-    
-    return oldNamecall(self, ...)
+-- Wait for MainEvent
+task.spawn(function()
+    repeat task.wait() until ReplicatedStorage:FindFirstChild("MainEvent")
+    print("[Prime DHC] MainEvent found!")
 end)
 
-print("[Prime DHC] Seliware silent aim loaded!")
+-- Use pcall to safely hook
+local hookSuccess = pcall(function()
+    local oldNamecall
+    oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+        local method = getnamecallmethod()
+        local args = {...}
+        
+        -- Only hook if we have a target
+        if silentAimTarget and method == "FireServer" then
+            -- Check if this is the mouse position update
+            if tostring(self) == "MainEvent" or self.Name == "MainEvent" then
+                if args[1] == "UpdateMousePos" or args[1] == "MousePos" then
+                    local targetHead = silentAimTarget:FindFirstChild("Head")
+                    if targetHead then
+                        -- Redirect to head position
+                        args[2] = targetHead.Position
+                    end
+                end
+            end
+        end
+        
+        return oldNamecall(self, ...)
+    end)
+end)
+
+if hookSuccess then
+    print("[Prime DHC] Silent aim hooked successfully!")
+else
+    warn("[Prime DHC] Silent aim hook failed - will use direct aiming instead")
+end
 
 -- ===== SERVICES =====
 local Players = game:GetService("Players")
@@ -520,7 +532,7 @@ local function collectMoney(moneyPart)
     end
 end
 
--- ===== MAIN FARM FUNCTION (FIXED FOR SELIWARE) =====
+-- ===== MAIN FARM FUNCTION (SELIWARE FIXED) =====
 local function robTarget(targetModel, openPart)
     local char = Player.Character
     if not char or not char.Parent then return end
@@ -535,13 +547,17 @@ local function robTarget(targetModel, openPart)
     
     print("[Prime DHC] Robbing target...")
     
-    -- Position behind cashier ONCE
+    -- Position behind cashier
     local tpPos = openPart.Position - openPart.CFrame.LookVector * 4
-    hrp.CFrame = CFrame.new(tpPos)
+    local aimPos = targetHead.Position
+    
+    -- Teleport and face target
+    hrp.CFrame = CFrame.new(tpPos, aimPos)
     hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
     hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
     
-    -- Anchor character to prevent glitching
+    -- Anchor to prevent movement
+    local originalAnchored = hrp.Anchored
     hrp.Anchored = true
     task.wait(0.5)
     
@@ -549,7 +565,7 @@ local function robTarget(targetModel, openPart)
     local tool = getAUGTool()
     if not tool then
         warn("[Prime DHC] No weapon found!")
-        hrp.Anchored = false
+        hrp.Anchored = originalAnchored
         autoBuy()
         return
     end
@@ -561,52 +577,53 @@ local function robTarget(targetModel, openPart)
     
     -- Enable silent aim
     silentAimTarget = targetModel
-    print("[Prime DHC] Silent aim enabled for:", targetModel.Name)
+    print("[Prime DHC] Silent aim enabled")
     
     -- Shoot target
     local shootStart = tick()
     local lastHealth = targetHum.Health
     local hitCount = 0
+    local shotsFired = 0
     
-    print("[Prime DHC] Starting to shoot. Target health:", lastHealth)
+    print("[Prime DHC] Starting to shoot. Target health:", math.floor(lastHealth))
     
-    while targetHum and targetHum.Health > 0 and (tick() - shootStart) < getgenv().MaxAttackTime do
-        local equipped = char:FindFirstChildOfClass("Tool")
-        
-        if equipped and string.lower(equipped.Name):find("aug") then
-            -- Fire weapon (silent aim will redirect to head)
-            pcall(function()
+    while targetHum.Parent and targetHum.Health > 0 and (tick() - shootStart) < getgenv().MaxAttackTime do
+        pcall(function()
+            local equipped = char:FindFirstChildOfClass("Tool")
+            
+            if equipped and string.lower(equipped.Name):find("aug") then
+                -- Fire weapon
                 equipped:Activate()
-            end)
-            
-            -- Check if we're hitting
-            if targetHum.Health < lastHealth then
-                hitCount = hitCount + 1
-                print("[Prime DHC] HIT #" .. hitCount .. "! Damage:", math.floor(lastHealth - targetHum.Health), "Remaining HP:", math.floor(targetHum.Health))
-                lastHealth = targetHum.Health
-            end
-            
-            task.wait(0.05)
-        else
-            -- Re-equip if lost
-            tool = getAUGTool()
-            if tool then
-                hum:EquipTool(tool)
-                task.wait(0.3)
+                shotsFired = shotsFired + 1
+                
+                -- Check for hits
+                if targetHum.Health < lastHealth then
+                    hitCount = hitCount + 1
+                    local damage = lastHealth - targetHum.Health
+                    print("[Prime DHC] HIT #" .. hitCount .. "! Damage:", math.floor(damage), "HP remaining:", math.floor(targetHum.Health))
+                    lastHealth = targetHum.Health
+                end
+                
+                task.wait(0.05)
             else
-                break
+                -- Re-equip weapon
+                tool = getAUGTool()
+                if tool and tool.Parent ~= char then
+                    hum:EquipTool(tool)
+                    task.wait(0.3)
+                end
             end
-        end
+        end)
     end
     
-    -- Unanchor and disable silent aim
-    hrp.Anchored = false
+    -- Cleanup
+    hrp.Anchored = originalAnchored
     silentAimTarget = nil
     
-    if targetHum.Health <= 0 then
-        print("[Prime DHC] Target eliminated! Total hits:", hitCount)
+    if not targetHum.Parent or targetHum.Health <= 0 then
+        print("[Prime DHC] Target eliminated! Shots:", shotsFired, "Hits:", hitCount)
     else
-        print("[Prime DHC] Target survived. Total hits:", hitCount, "Remaining HP:", math.floor(targetHum.Health))
+        print("[Prime DHC] Target survived. Shots:", shotsFired, "Hits:", hitCount, "HP:", math.floor(targetHum.Health))
     end
     
     randomDelay(getgenv().SpawnWait, getgenv().SpawnWait + 0.3)
