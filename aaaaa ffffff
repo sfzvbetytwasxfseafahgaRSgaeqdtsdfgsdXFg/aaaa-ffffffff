@@ -482,10 +482,9 @@ local function robTarget(targetModel, openPart)
     local hum = char:FindFirstChild("Humanoid")
     if not hrp or not hum then return end
   
-    local targetHead = targetModel:FindFirstChild("Head")
     local targetHum = targetModel:FindFirstChild("Humanoid")
     local targetRoot = targetModel:FindFirstChild("HumanoidRootPart")
-    if not targetHead or not targetHum or targetHum.Health <= 0 then return end
+    if not targetRoot or not targetHum or targetHum.Health <= 0 then return end
   
     -- Position behind cashier
     local tpPos = openPart.Position - openPart.CFrame.LookVector * 4
@@ -508,7 +507,7 @@ local function robTarget(targetModel, openPart)
     end
   
     -- Enable silent aim
-    SilentAimPart = targetHead
+    SilentAimPart = targetRoot
     SilentAimVelocity = targetRoot and targetRoot.Velocity or Vector3.new(0,0,0)
   
     -- Shoot target
