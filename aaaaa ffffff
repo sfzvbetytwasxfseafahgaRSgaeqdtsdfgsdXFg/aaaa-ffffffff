@@ -23,11 +23,7 @@ local fpsVar = 60
 RunService.Heartbeat:Connect(function(dt)
     fpsVar = math.floor(1 / dt)
 end)
-
--- Set FPS cap if available
-if setfpscap then
-    setfpscap(getgenv().AutofarmSettings.Main.Fps)
-end
+setfpscap(getgenv().AutofarmSettings.Main.Fps)
 
 -- Visual optimization classes
 local visualClasses = {
@@ -46,37 +42,26 @@ local function DescendantOfIgnore(obj)
     return false
 end
 
--- Remove visual objects (optimized with pcall, silently ignore errors)
+-- Remove visual objects (optimized with pcall)
 local function RemoveVisualObjects()
     pcall(function()
         local count = 0
         for _, obj in pairs(Workspace:GetDescendants()) do
             if not DescendantOfIgnore(obj) then
-                -- Skip ALL descendants of BULLET_RAYS and MoneyDrop to avoid warnings
-                local parent = obj.Parent
-                while parent do
-                    if parent.Name == "BULLET_RAYS" or parent.Name == "MoneyDrop" then
-                        goto continue
-                    end
-                    parent = parent.Parent
+                -- Skip BULLET_RAYS and gun effects to avoid warnings
+                if obj.Parent and obj.Parent.Name == "BULLET_RAYS" then
+                    continue
                 end
                 
                 for _, class in ipairs(visualClasses) do
                     if obj:IsA(class) then
-                        -- Silently destroy without printing warnings
-                        pcall(function() 
-                            if obj and obj.Parent then
-                                obj:Destroy() 
-                            end
-                        end)
+                        obj:Destroy()
                         count = count + 1
                         if count % 50 == 0 then
                             task.wait() -- Yield occasionally to prevent lag spikes
                         end
                     end
                 end
-                
-                ::continue::
             end
         end
         
@@ -84,22 +69,14 @@ local function RemoveVisualObjects()
             for _, child in pairs(Workspace.Terrain:GetChildren()) do
                 for _, class in ipairs(visualClasses) do
                     if child:IsA(class) then
-                        pcall(function() 
-                            if child and child.Parent then
-                                child:Destroy() 
-                            end
-                        end)
+                        child:Destroy()
                     end
                 end
             end
         end
         
         for _, obj in pairs(Lighting:GetChildren()) do
-            pcall(function() 
-                if obj and obj.Parent then
-                    obj:Destroy() 
-                end
-            end)
+            obj:Destroy()
         end
     end)
 end
@@ -221,15 +198,6 @@ local function MonitorNewObjects()
     Workspace.DescendantAdded:Connect(function(obj)
         pcall(function()
             if not DescendantOfIgnore(obj) then
-                -- Skip ALL descendants of BULLET_RAYS and MoneyDrop
-                local parent = obj.Parent
-                while parent do
-                    if parent.Name == "BULLET_RAYS" or parent.Name == "MoneyDrop" then
-                        return
-                    end
-                    parent = parent.Parent
-                end
-                
                 for _, class in ipairs(visualClasses) do
                     if obj:IsA(class) then
                         obj:Destroy()
@@ -776,142 +744,40 @@ end)
 
 -- Webhook function
 local function sendWebhook()
-    if not getgenv().AutofarmSettings.Webhook.Webhook or getgenv().AutofarmSettings.Webhook.Webhook == "" then 
-        warn("[Prime DHC Auto Farm] No webhook URL configured")
-        return false
-    end
+    if getgenv().AutofarmSettings.Webhook.Webhook == "" then return end
     
-    -- Safety check: ensure all data is available
-    if not Player or not Player.DataFolder or not Player.DataFolder:FindFirstChild("Currency") then
-        warn("[Prime DHC Auto Farm] Player data not ready for webhook")
-        return false
-    end
+    local currentCash = Player.DataFolder.Currency.Value
+    local profit = currentCash - startCash
+    local elapsed = tick() - startTime
+    local hours = math.floor(elapsed / 3600)
+    local minutes = math.floor((elapsed % 3600) / 60)
     
-    if not startCash or not startTime then
-        warn("[Prime DHC Auto Farm] Start values not initialized")
-        return false
-    end
+    local data = {
+        ["username"] = "Prime Farm Logger",
+        ["embeds"] = {{
+            ["title"] = "Farm Update: " .. Player.Name,
+            ["description"] = "Running for " .. hours .. "h " .. minutes .. "m",
+            ["color"] = 1752220,
+            ["fields"] = {
+                {name = "Current Cash", value = formatMoney(currentCash), inline = true},
+                {name = "Total Profit", value = formatMoney(profit), inline = true},
+                {name = "FPS", value = tostring(fpsVar), inline = true}
+            }
+        }}
+    }
     
-    local success, err = pcall(function()
-        local currentCash = Player.DataFolder.Currency.Value
-        local profit = currentCash - startCash
-        local elapsed = tick() - startTime
-        local hours = math.floor(elapsed / 3600)
-        local minutes = math.floor((elapsed % 3600) / 60)
-        local seconds = math.floor(elapsed % 60)
-        
-        -- Calculate per hour rates
-        local profitPerHour = 0
-        if elapsed > 0 then
-            profitPerHour = (profit / elapsed) * 3600
-        end
-        
-        local data = {
-            ["username"] = "Prime DHC Auto Farm",
-            ["embeds"] = {{
-                ["title"] = "Farm Status Report",
-                ["description"] = "**User:** " .. Player.Name .. "\n**Display Name:** " .. Player.DisplayName,
-                ["color"] = 65535,
-                ["fields"] = {
-                    {
-                        ["name"] = "Runtime",
-                        ["value"] = string.format("%02d:%02d:%02d", hours, minutes, seconds),
-                        ["inline"] = true
-                    },
-                    {
-                        ["name"] = "FPS",
-                        ["value"] = tostring(fpsVar),
-                        ["inline"] = true
-                    },
-                    {
-                        ["name"] = "Server Size",
-                        ["value"] = tostring(#Players:GetPlayers()) .. " players",
-                        ["inline"] = true
-                    },
-                    {
-                        ["name"] = "Starting Cash",
-                        ["value"] = formatMoney(startCash),
-                        ["inline"] = true
-                    },
-                    {
-                        ["name"] = "Current Cash",
-                        ["value"] = formatMoney(currentCash),
-                        ["inline"] = true
-                    },
-                    {
-                        ["name"] = "Total Profit",
-                        ["value"] = formatMoney(profit),
-                        ["inline"] = true
-                    },
-                    {
-                        ["name"] = "Profit Per Hour",
-                        ["value"] = formatMoney(profitPerHour),
-                        ["inline"] = false
-                    }
-                },
-                ["footer"] = {
-                    ["text"] = "Prime DHC • discord.gg/primedhc"
-                },
-                ["timestamp"] = os.date("!%Y-%m-%dT%H:%M:%S")
-            }}
-        }
-        
-        local jsonData = HttpService:JSONEncode(data)
-        
-        -- Use request function (Seliware supports this)
-        local req = http_request or request or syn.request or fluxus.request
-        if req then
-            local response = req({
-                Url = getgenv().AutofarmSettings.Webhook.Webhook,
-                Method = "POST",
-                Headers = {
-                    ["Content-Type"] = "application/json"
-                },
-                Body = jsonData
-            })
-            print("[Prime DHC Auto Farm] Webhook sent via request - Status:", response.StatusCode or "Unknown")
-            return true
-        else
-            -- Fallback to HttpService
-            local response = HttpService:PostAsync(
-                getgenv().AutofarmSettings.Webhook.Webhook,
-                jsonData,
-                Enum.HttpContentType.ApplicationJson,
-                false
-            )
-            print("[Prime DHC Auto Farm] Webhook sent via HttpService")
-            return true
-        end
+    pcall(function()
+        HttpService:PostAsync(getgenv().AutofarmSettings.Webhook.Webhook, HttpService:JSONEncode(data), Enum.HttpContentType.ApplicationJson)
     end)
-    
-    if not success then
-        warn("[Prime DHC Auto Farm] Webhook error:", tostring(err))
-        return false
-    end
-    
-    return success
 end
 
 -- Webhook loop
 task.spawn(function()
-    -- Send initial webhook immediately
-    if getgenv().AutofarmSettings.Webhook.Webhook ~= "" then
-        task.wait(5) -- Wait 5 seconds for everything to initialize
-        pcall(sendWebhook)
-        print("[Prime DHC Auto Farm] Initial webhook sent")
-    end
-    
-    -- Then send on interval
     while true do
-        task.wait(getgenv().AutofarmSettings.Webhook.Interval)
         if getgenv().AutofarmSettings.Webhook.Webhook ~= "" then
-            local success = pcall(sendWebhook)
-            if success then
-                print("[Prime DHC Auto Farm] Webhook sent successfully")
-            else
-                warn("[Prime DHC Auto Farm] Webhook send failed")
-            end
+            pcall(sendWebhook)
         end
+        task.wait(getgenv().AutofarmSettings.Webhook.Interval)
     end
 end)
 
