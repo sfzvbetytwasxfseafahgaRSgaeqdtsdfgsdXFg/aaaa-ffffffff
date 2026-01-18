@@ -396,19 +396,51 @@ local function getAUGTool()
     return nil
 end
 
--- ===== NAMECALL HOOK FOR BULLET REDIRECTION =====
+-- ===== MOUSE HOOK FOR SILENT AIM =====
 local MainEvent = ReplicatedStorage:FindFirstChild("MainEvent")
 local currentAimTarget = nil
 local silentAimEnabled = false
 
+-- Hook __index to redirect mouse properties
+local oldIndex
+oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, key)
+    if silentAimEnabled and currentAimTarget then
+        local targetHead = currentAimTarget:FindFirstChild("Head")
+        if targetHead and targetHead.Parent then
+            -- Hook mouse Hit property
+            if self == Mouse and key == "Hit" then
+                return CFrame.new(targetHead.Position)
+            end
+            -- Hook mouse Target property
+            if self == Mouse and key == "Target" then
+                return targetHead
+            end
+            -- Hook mouse UnitRay property
+            if self == Mouse and key == "UnitRay" then
+                local char = Player.Character
+                if char then
+                    local head = char:FindFirstChild("Head")
+                    if head then
+                        local origin = head.Position
+                        local direction = (targetHead.Position - origin).Unit
+                        return Ray.new(origin, direction * 1000)
+                    end
+                end
+            end
+        end
+    end
+    return oldIndex(self, key)
+end))
+
+-- Hook __namecall to intercept remote calls
 local oldNamecall
 oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
     local args = {...}
     local method = getnamecallmethod()
     
-    -- Intercept gun firing
-    if method == "FireServer" and self.Name == "MainEvent" then
-        if silentAimEnabled and currentAimTarget and args[1] == "MOUSE1" then
+    -- Intercept gun firing remote
+    if silentAimEnabled and currentAimTarget and method == "FireServer" then
+        if self.Name == "MainEvent" and (args[1] == "MOUSE1" or args[1] == "UpdateMousePos") then
             local targetHead = currentAimTarget:FindFirstChild("Head")
             if targetHead and targetHead.Parent then
                 local char = Player.Character
@@ -417,12 +449,10 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
                     if tool and string.lower(tool.Name):find("aug") then
                         local handle = tool:FindFirstChild("Handle")
                         if handle then
-                            -- Calculate proper trajectory to target
                             local origin = handle.Position
                             local targetPos = targetHead.Position
                             local direction = (targetPos - origin).Unit * 1000
                             
-                            -- Raycast to target
                             local rayParams = RaycastParams.new()
                             rayParams.FilterDescendantsInstances = {char}
                             rayParams.FilterType = Enum.RaycastFilterType.Blacklist
@@ -430,7 +460,6 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
                             local result = Workspace:Raycast(origin, direction, rayParams)
                             
                             if result then
-                                -- Override args with our calculated hit
                                 args[2] = {
                                     ["Hit"] = result.Instance,
                                     ["Target"] = result.Instance,
@@ -455,7 +484,7 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
     return oldNamecall(self, unpack(args))
 end))
 
-print("[Prime DHC] Silent aim hook installed!")
+print("[Prime DHC] Mouse + Namecall hooks installed!")
 
 -- ===== TOOL ACTIVATION SYSTEM =====
 local function shootAtTarget(targetHead)
@@ -465,7 +494,7 @@ local function shootAtTarget(targetHead)
     local tool = char:FindFirstChildOfClass("Tool")
     if not tool or not string.lower(tool.Name):find("aug") then return false end
     
-    -- Just activate the tool, hook will handle redirection
+    -- Activate tool - both hooks will redirect
     pcall(function()
         tool:Activate()
     end)
