@@ -57,69 +57,21 @@ print("[Prime DHC] Initializing silent aim...")
 
 local silentAimEnabled = false
 local currentTarget = nil
-local MainEvent = nil
+local Mouse = Player:GetMouse()
 
--- Wait for MainEvent to load
-task.spawn(function()
-    MainEvent = ReplicatedStorage:WaitForChild("MainEvent")
-    print("[Prime DHC] MainEvent found!")
-end)
-
--- Mouse position spoofing
-local mt = getrawmetatable(game)
-local old_namecall = mt.__namecall
-local old_index = mt.__index
-
-setreadonly(mt, false)
-
-mt.__namecall = newcclosure(function(self, ...)
-    local args = {...}
-    local method = getnamecallmethod()
-    
-    -- Intercept mouse position updates
-    if silentAimEnabled and currentTarget and method == "FireServer" then
-        if self.Name == "MainEvent" then
-            local action = args[1]
-            
-            -- Hook shooting events
-            if action == "UpdateMousePos" or action == "MousePos" or 
-               action == "MOUSE" or action == "UpdateMousePosI" then
-                
-                local targetHead = currentTarget:FindFirstChild("Head")
-                if targetHead then
-                    -- Aim at head position
-                    local aimPos = targetHead.Position
-                    args[2] = aimPos
-                    
-                    print("[Prime DHC] Redirecting shot to head:", aimPos)
-                    return old_namecall(self, unpack(args))
-                end
-            end
-        end
-    end
-    
-    return old_namecall(self, ...)
-end)
-
--- Also hook mouse property access
-mt.__index = newcclosure(function(self, key)
+-- Hook mouse position for silent aim
+local oldIndex
+oldIndex = hookmetamethod(game, "__index", function(self, key)
     if silentAimEnabled and currentTarget then
-        if self:IsA("Mouse") and (key == "Hit" or key == "Target") then
+        if key == "Hit" then
             local targetHead = currentTarget:FindFirstChild("Head")
             if targetHead then
-                if key == "Hit" then
-                    return CFrame.new(targetHead.Position)
-                elseif key == "Target" then
-                    return targetHead
-                end
+                return CFrame.new(targetHead.Position)
             end
         end
     end
-    
-    return old_index(self, key)
+    return oldIndex(self, key)
 end)
-
-setreadonly(mt, true)
 
 print("[Prime DHC] Silent aim initialized!")
 
@@ -579,25 +531,17 @@ local function robTarget(targetModel, openPart)
     
     print("[Prime DHC] Robbing target with silent aim...")
     
-    -- Enable silent aim and set target
-    currentTarget = targetModel
-    silentAimEnabled = true
-    print("[Prime DHC] Silent aim ENABLED for:", targetModel.Name)
-    
-    -- Position behind cashier
-    local aimPosition = targetHead.Position
+    -- Position behind cashier (ONE TIME, no looping)
     local tpPos = openPart.Position - openPart.CFrame.LookVector * 4
-    
-    hrp.CFrame = CFrame.lookAt(tpPos, aimPosition)
+    hrp.CFrame = CFrame.new(tpPos)
     hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-    randomDelay(0.3, 0.5)
+    hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+    task.wait(0.5)
     
     -- Equip weapon
     local tool = getAUGTool()
     if not tool then
         warn("[Prime DHC] No weapon found!")
-        silentAimEnabled = false
-        currentTarget = nil
         autoBuy()
         return
     end
@@ -607,47 +551,46 @@ local function robTarget(targetModel, openPart)
         task.wait(0.6)
     end
     
-    -- Shoot target with silent aim active
+    -- Enable silent aim
+    currentTarget = targetModel
+    silentAimEnabled = true
+    print("[Prime DHC] Silent aim ENABLED")
+    
+    -- Shoot target
     local shootStart = tick()
     local shotsFired = 0
     local lastHealth = targetHum.Health
     
     print("[Prime DHC] Starting to shoot. Target health:", lastHealth)
     
+    -- Simple shooting loop - tool:Activate() will use Mouse.Hit which is hooked
     while targetHum and targetHum.Health > 0 and (tick() - shootStart) < getgenv().MaxAttackTime do
-        pcall(function()
-            -- Keep target updated for silent aim
-            currentTarget = targetModel
-            
-            -- Keep visual aim on target
-            if hrp and targetHead then
-                hrp.CFrame = CFrame.lookAt(hrp.Position, targetHead.Position)
-            end
-            
-            -- Fire weapon (silent aim will redirect to head)
-            local equipped = char:FindFirstChildOfClass("Tool")
-            if equipped and string.lower(equipped.Name):find("aug") then
-                -- Activate weapon
+        local equipped = char:FindFirstChildOfClass("Tool")
+        
+        if equipped and string.lower(equipped.Name):find("aug") then
+            -- Shoot - silent aim hook will redirect to head
+            pcall(function()
                 equipped:Activate()
-                shotsFired = shotsFired + 1
-                
-                -- Check if we hit
-                if targetHum.Health < lastHealth then
-                    print("[Prime DHC] HIT! Damage dealt:", lastHealth - targetHum.Health)
-                    lastHealth = targetHum.Health
-                end
-                
-                task.wait(0.05)
-            else
-                -- Re-equip if needed
-                tool = getAUGTool()
-                if tool and tool.Parent ~= char then
-                    hum:EquipTool(tool)
-                    task.wait(0.3)
-                end
+            end)
+            shotsFired = shotsFired + 1
+            
+            -- Check for damage
+            if targetHum.Health < lastHealth then
+                print("[Prime DHC] HIT! Damage:", lastHealth - targetHum.Health, "Remaining:", targetHum.Health)
+                lastHealth = targetHum.Health
             end
-        end)
-        task.wait()
+            
+            task.wait(0.05)
+        else
+            -- Re-equip if lost
+            tool = getAUGTool()
+            if tool then
+                hum:EquipTool(tool)
+                task.wait(0.3)
+            else
+                break
+            end
+        end
     end
     
     -- Disable silent aim
