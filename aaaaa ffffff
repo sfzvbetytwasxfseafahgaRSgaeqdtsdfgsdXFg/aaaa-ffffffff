@@ -1,3 +1,4 @@
+-- Prime DHC Auto Farm - Fixed for Seliware
 print("[Prime DHC] Starting auto farm...")
 
 if not getgenv().Data or not getgenv().Data.authenticated then
@@ -489,6 +490,45 @@ local function collectMoney(moneyPart)
     end
 end
 
+-- ===== SILENT AIM SETUP =====
+local silentAimEnabled = false
+local currentTarget = nil
+
+local oldNamecall
+oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+    local args = {...}
+    local method = getnamecallmethod()
+    
+    if silentAimEnabled and currentTarget and method == "FireServer" then
+        if self.Name == "MainEvent" or self.Name == "RemoteEvent" then
+            -- Check if this is a shooting event
+            if args[1] == "UpdateMousePos" or args[1] == "MousePos" or 
+               args[1] == "Hit" or string.find(tostring(args[1]), "MOUSE") then
+                
+                -- Replace position with target's head
+                local targetHead = currentTarget:FindFirstChild("Head")
+                if targetHead then
+                    -- Aim slightly below head for better hit registration
+                    local aimPos = targetHead.Position - Vector3.new(0, 0.3, 0)
+                    
+                    -- Find position argument and replace it
+                    for i, arg in pairs(args) do
+                        if typeof(arg) == "Vector3" then
+                            args[i] = aimPos
+                        elseif typeof(arg) == "CFrame" then
+                            args[i] = CFrame.new(aimPos)
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    return oldNamecall(self, unpack(args))
+end)
+
+print("[Prime DHC] Silent aim initialized!")
+
 -- ===== MAIN FARM FUNCTION =====
 local function robTarget(targetModel, openPart)
     local char = Player.Character
@@ -502,7 +542,11 @@ local function robTarget(targetModel, openPart)
     local targetHum = targetModel:FindFirstChild("Humanoid")
     if not targetHead or not targetHum or targetHum.Health <= 0 then return end
     
-    print("[Prime DHC] Robbing target...")
+    print("[Prime DHC] Robbing target with silent aim...")
+    
+    -- Set as current target for silent aim
+    currentTarget = targetModel
+    silentAimEnabled = true
     
     -- Position behind cashier
     local aimPosition = targetHead.Position - Vector3.new(0, 3, 0)
@@ -516,6 +560,8 @@ local function robTarget(targetModel, openPart)
     local tool = getAUGTool()
     if not tool then
         warn("[Prime DHC] No weapon found!")
+        silentAimEnabled = false
+        currentTarget = nil
         autoBuy()
         return
     end
@@ -525,32 +571,41 @@ local function robTarget(targetModel, openPart)
         task.wait(0.6)
     end
     
-    -- Shoot target
+    -- Shoot target with silent aim
     local shootStart = tick()
     local shootConn
+    local shotsFired = 0
     
     shootConn = RunService.Heartbeat:Connect(function()
         pcall(function()
             if (tick() - shootStart) > getgenv().MaxAttackTime then
                 if shootConn then shootConn:Disconnect() end
+                silentAimEnabled = false
+                currentTarget = nil
                 return
             end
             
             if not targetHum or targetHum.Health <= 0 then
                 if shootConn then shootConn:Disconnect() end
+                silentAimEnabled = false
+                currentTarget = nil
                 return
             end
             
-            -- Keep aiming
+            -- Update target for silent aim
+            currentTarget = targetModel
+            
+            -- Keep looking towards target (visual only, bullets go to head via silent aim)
             if hrp and targetHead then
                 hrp.CFrame = CFrame.lookAt(hrp.Position, aimPosition)
             end
             
-            -- Shoot
+            -- Shoot (silent aim will redirect bullets to head)
             local equipped = char:FindFirstChildOfClass("Tool")
             if equipped and string.lower(equipped.Name):find("aug") then
                 pcall(function()
                     equipped:Activate()
+                    shotsFired = shotsFired + 1
                 end)
             else
                 tool = getAUGTool()
@@ -570,7 +625,11 @@ local function robTarget(targetModel, openPart)
         shootConn:Disconnect()
     end
     
-    print("[Prime DHC] Target eliminated, collecting money...")
+    -- Disable silent aim
+    silentAimEnabled = false
+    currentTarget = nil
+    
+    print("[Prime DHC] Target eliminated! Shots fired:", shotsFired)
     randomDelay(getgenv().SpawnWait, getgenv().SpawnWait + 0.3)
     
     -- Collect money
