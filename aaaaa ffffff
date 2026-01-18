@@ -396,69 +396,57 @@ local function getAUGTool()
     return nil
 end
 
--- ===== NAMECALL HOOK FOR GUN FIRING (SELIWARE) =====
+-- ===== DIRECT GUN FIRING (NO HOOKS, NO MOUSE) =====
 local MainEvent = ReplicatedStorage:FindFirstChild("MainEvent")
-local currentTarget = nil
-local hookActive = false
 
-local oldNamecall
-oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
-    local method = getnamecallmethod()
-    local args = {...}
+local function shootAtTarget(targetHead)
+    if not MainEvent then return false end
     
-    -- Hook MainEvent FireServer calls when shooting
-    if hookActive and currentTarget and self == MainEvent and method == "FireServer" then
-        if args[1] == "MOUSE1" or args[1] == "MouseButton1Down" or args[1] == "UpdateMousePos" then
-            local targetHead = currentTarget:FindFirstChild("Head")
-            if targetHead then
-                local char = Player.Character
-                if char then
-                    local tool = char:FindFirstChildOfClass("Tool")
-                    if tool and string.lower(tool.Name):find("aug") then
-                        local handle = tool:FindFirstChild("Handle")
-                        if handle then
-                            -- Calculate proper hit data
-                            local origin = handle.Position
-                            local targetPos = targetHead.Position
-                            local direction = (targetPos - origin).Unit * 500
-                            
-                            -- Perform raycast
-                            local rayParams = RaycastParams.new()
-                            rayParams.FilterDescendantsInstances = {char}
-                            rayParams.FilterType = Enum.RaycastFilterType.Blacklist
-                            
-                            local rayResult = Workspace:Raycast(origin, direction, rayParams)
-                            
-                            if rayResult then
-                                -- Override with our target data
-                                args[2] = {
-                                    ["Hit"] = rayResult.Position,
-                                    ["Target"] = rayResult.Instance,
-                                    ["Position"] = rayResult.Position,
-                                    ["Normal"] = rayResult.Normal,
-                                    ["Distance"] = (origin - rayResult.Position).Magnitude
-                                }
-                            else
-                                -- Direct hit to target if no raycast
-                                args[2] = {
-                                    ["Hit"] = targetPos,
-                                    ["Target"] = targetHead,
-                                    ["Position"] = targetPos,
-                                    ["Normal"] = Vector3.new(0, 1, 0),
-                                    ["Distance"] = (origin - targetPos).Magnitude
-                                }
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end
+    local char = Player.Character
+    if not char then return false end
     
-    return oldNamecall(self, unpack(args))
-end))
+    local tool = char:FindFirstChildOfClass("Tool")
+    if not tool or not string.lower(tool.Name):find("aug") then return false end
+    
+    local handle = tool:FindFirstChild("Handle")
+    if not handle then return false end
+    
+    -- Calculate hit data
+    local origin = handle.Position
+    local targetPos = targetHead.Position
+    local direction = (targetPos - origin).Unit * 500
+    
+    -- Perform raycast
+    local rayParams = RaycastParams.new()
+    rayParams.FilterDescendantsInstances = {char}
+    rayParams.FilterType = Enum.RaycastFilterType.Blacklist
+    
+    local result = Workspace:Raycast(origin, direction, rayParams)
+    
+    local hitPos = result and result.Position or targetPos
+    local hitPart = result and result.Instance or targetHead
+    
+    -- Fire the gun remote directly (Da Hood gun system)
+    pcall(function()
+        MainEvent:FireServer("MOUSE1", {
+            ["Hit"] = hitPart,
+            ["Target"] = hitPart,
+            ["Pos"] = hitPos,
+            ["Position"] = hitPos,
+            ["Normal"] = result and result.Normal or Vector3.new(0, 1, 0),
+            ["Distance"] = (origin - hitPos).Magnitude,
+            ["Cframe"] = CFrame.new(hitPos),
+            ["p"] = hitPos,
+            ["X"] = hitPos.X,
+            ["Y"] = hitPos.Y,
+            ["Z"] = hitPos.Z
+        })
+    end)
+    
+    return true
+end
 
-print("[Prime DHC] Namecall hook installed!")
+print("[Prime DHC] Direct firing system loaded!")
 
 -- ===== SHOP FUNCTIONS =====
 local augBuyPos = Vector3.new(-273.0153041799, 52.2666088321, -216.104867764)
